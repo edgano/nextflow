@@ -62,7 +62,6 @@ class ProcessFactory {
             'pbs': PbsExecutor,
             'slurm': SlurmExecutor,
             'crg': CrgExecutor,
-            'bsc': LsfExecutor,
             'condor': CondorExecutor,
             'k8s': KubernetesExecutor,
             'nqsii': NqsiiExecutor,
