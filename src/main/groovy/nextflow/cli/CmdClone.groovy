@@ -25,6 +25,8 @@ import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.exception.AbortOperationException
 import nextflow.scm.AssetManager
+import picocli.CommandLine
+
 /**
  * CLI sub-command clone
  *
@@ -32,15 +34,18 @@ import nextflow.scm.AssetManager
  */
 @Slf4j
 @CompileStatic
-@Parameters(commandDescription = "Clone a project into a folder")
+//@Parameters(commandDescription = "Clone a project into a folder")
+@CommandLine.Command (name = "Clone", description ="Clone a project into a folder")
 class CmdClone extends CmdBase implements HubOptions {
 
     static final public NAME = 'clone'
 
-    @Parameter(required=true, description = 'name of the project to clone')
+    //@Parameter(required=true, description = 'name of the project to clone')
+    @CommandLine.Parameters(arity = "1..*", description = "name of the project to clone")    //TODO ??
     List<String> args
 
-    @Parameter(names='-r', description = 'Revision to clone - It can be a git branch, tag or revision number')
+    //@Parameter(names='-r', description = 'Revision to clone - It can be a git branch, tag or revision number')
+    @CommandLine.Option(names=['-r'], description = 'Revision to clone - It can be a git branch, tag or revision number')
     String revision
 
     @Override

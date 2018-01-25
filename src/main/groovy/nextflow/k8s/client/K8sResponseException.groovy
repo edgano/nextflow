@@ -18,28 +18,44 @@
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package nextflow.cli
+package nextflow.k8s.client
 
-import com.beust.jcommander.Parameter
-import picocli.CommandLine
+import groovy.transform.CompileStatic
+import groovy.util.logging.Slf4j
 
 /**
- * Implement command shared methods
+ * Model a kubernetes invalid response
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-@CommandLine.Command (name = "Base")
-abstract class CmdBase implements Runnable {
 
-    private Launcher launcher
+@Slf4j
+@CompileStatic
+class K8sResponseException extends Exception {
 
-    abstract def String getName()
+    K8sResponseJson response
 
-    Launcher getLauncher() { launcher }
+    K8sResponseException(String message, K8sResponseJson response) {
+        super(message)
+        this.response = response
+    }
 
-    void setLauncher( Launcher value ) { this.launcher = value }
+    K8sResponseException(String message, InputStream response) {
+        this(message, new K8sResponseJson(fetch(response)))
+    }
 
-    //@Parameter(names=['-h','-help'], description = 'Print the command usage', arity = 0, help = true)
-    @CommandLine.Option(names=['-h','--help'], description = 'Print the command usage', usageHelp = true, arity = '0', help = true)
-    boolean help
+    static private String fetch(InputStream stream) {
+        try {
+            return stream?.text
+        }
+        catch( Exception e ) {
+            log.debug "Unable to fetch response text -- Cause: ${e.message ?: e}"
+            return null
+        }
+    }
+
+    String getMessage() {
+        response ? "${super.message}\n${response.toString().indent()}" : super.getMessage()
+    }
+
 }

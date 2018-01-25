@@ -18,28 +18,38 @@
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package nextflow.cli
+package nextflow.k8s
+import java.nio.file.Path
 
-import com.beust.jcommander.Parameter
-import picocli.CommandLine
-
+import groovy.transform.CompileStatic
+import nextflow.executor.BashWrapperBuilder
+import nextflow.processor.TaskRun
 /**
- * Implement command shared methods
+ * Implements a BASH wrapper for tasks executed by kubernetes cluster
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-@CommandLine.Command (name = "Base")
-abstract class CmdBase implements Runnable {
+@CompileStatic
+class K8sWrapperBuilder extends BashWrapperBuilder {
 
-    private Launcher launcher
+    K8sWrapperBuilder(TaskRun task) {
+        super(task)
+    }
 
-    abstract def String getName()
+    /**
+     * only for testing purpose -- do not use
+     */
+    protected K8sWrapperBuilder() {}
 
-    Launcher getLauncher() { launcher }
+    @Override
+    boolean fixOwnership() {
+        containerConfig.fixOwnership
+    }
 
-    void setLauncher( Launcher value ) { this.launcher = value }
+    @Override
+    Map<String,Path> getResolvedInputs() {
+        super.getResolvedInputs()
+    }
 
-    //@Parameter(names=['-h','-help'], description = 'Print the command usage', arity = 0, help = true)
-    @CommandLine.Option(names=['-h','--help'], description = 'Print the command usage', usageHelp = true, arity = '0', help = true)
-    boolean help
+
 }

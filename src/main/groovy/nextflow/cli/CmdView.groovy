@@ -26,6 +26,7 @@ import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.exception.AbortOperationException
 import nextflow.scm.AssetManager
+import picocli.CommandLine
 
 /**
  * CLI sub-command VIEW -- Print a pipeline script to console
@@ -35,6 +36,7 @@ import nextflow.scm.AssetManager
 @Slf4j
 @CompileStatic
 @Parameters(commandDescription = "View project script file(s)")
+@CommandLine.Command(name = "View", description ="View project script file(s)")
 class CmdView extends CmdBase {
 
     static final public NAME = 'view'
@@ -42,13 +44,16 @@ class CmdView extends CmdBase {
     @Override
     String getName() { NAME }
 
-    @Parameter(description = 'project name', required = true)
+    //@Parameter(description = 'project name', required = true)
+    @CommandLine.Parameters(description = 'project name', arity = '1..*')
     List<String> args = []
 
-    @Parameter(names = '-q', description = 'Hide header line', arity = 0)
+    //@Parameter(names = '-q', description = 'Hide header line', arity = 0)
+    @CommandLine.Option(names = ['-q'], description = 'Hide header line', arity = '0')
     boolean quiet
 
-    @Parameter(names = '-l', description = 'List repository content', arity = 0)
+    //@Parameter(names = '-l', description = 'List repository content', arity = 0)
+    @CommandLine.Option(names = ['-l'], description = 'List repository content', arity = '0')
     boolean all
 
     @Override

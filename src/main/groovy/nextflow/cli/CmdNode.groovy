@@ -28,13 +28,16 @@ import nextflow.config.ConfigBuilder
 import nextflow.daemon.DaemonLauncher
 import nextflow.util.ServiceName
 import nextflow.util.ServiceDiscover
+import picocli.CommandLine
+
 /**
  * CLI-command NODE
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @Slf4j
 @CompileStatic
-@Parameters
+//@Parameters
+@CommandLine.Command(name = "Node")
 class CmdNode extends CmdBase {
 
     static final public NAME = 'node'
@@ -42,15 +45,18 @@ class CmdNode extends CmdBase {
     @Override
     final String getName() { NAME }
 
-    @DynamicParameter(names ='-cluster.', description='Define cluster config options')
+    //@DynamicParameter(names ='-cluster.', description='Define cluster config options')
+    @CommandLine.Option(names =['--cluster'],description = 'Define cluster config options')
     Map<String,String> clusterOptions = [:]
 
-    @Parameter(names = ['-bg'], arity = 0, description = 'Start the cluster node daemon in background')
+    //@Parameter(names = ['-bg'], arity = 0, description = 'Start the cluster node daemon in background')
+    //TODO
     void setBackground(boolean value) {
         launcher.options.background = value
     }
 
-    @Parameter
+    //@Parameter
+    @CommandLine.Parameters(description = 'Provider')
     List<String> provider
 
     @Override

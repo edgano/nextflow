@@ -18,28 +18,41 @@
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package nextflow.cli
+package nextflow.k8s.client
 
-import com.beust.jcommander.Parameter
-import picocli.CommandLine
+import groovy.transform.CompileStatic
 
 /**
- * Implement command shared methods
+ * Model a Kubernetes API response
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-@CommandLine.Command (name = "Base")
-abstract class CmdBase implements Runnable {
+@CompileStatic
+class K8sResponseApi {
 
-    private Launcher launcher
+    private int code
 
-    abstract def String getName()
+    private InputStream stream
 
-    Launcher getLauncher() { launcher }
+    private String text
 
-    void setLauncher( Launcher value ) { this.launcher = value }
+    K8sResponseApi(int code, InputStream stream) {
+        this.code = code
+        this.stream = stream
+    }
 
-    //@Parameter(names=['-h','-help'], description = 'Print the command usage', arity = 0, help = true)
-    @CommandLine.Option(names=['-h','--help'], description = 'Print the command usage', usageHelp = true, arity = '0', help = true)
-    boolean help
+    String toString() {
+        "code=$code; stream=$stream"
+    }
+
+    int getCode() { code }
+
+    InputStream getStream() { stream }
+
+    String getText() {
+        if( text == null ) {
+            text = stream?.text
+        }
+        return text
+    }
 }
