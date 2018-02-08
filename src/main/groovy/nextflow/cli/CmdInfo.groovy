@@ -22,54 +22,45 @@ package nextflow.cli
 import java.lang.management.ManagementFactory
 import java.nio.file.spi.FileSystemProvider
 
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.Parameters
 import com.sun.management.OperatingSystemMXBean
 import groovy.transform.CompileStatic
 import nextflow.Const
 import nextflow.exception.AbortOperationException
 import nextflow.scm.AssetManager
 import nextflow.util.MemoryUnit
-import picocli.CommandLine
-import picocli.CommandLine.Option
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.Option
+import nextflow.CommandLine.Parameters
 /**
  * CLI sub-command INFO
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
-//@Parameters(commandDescription = "Print project and system runtime information")
-@CommandLine.Command (name = "Info", description ="Print project and system runtime information")
+@Command (name = "info", description = "Print project and system runtime information", abbreviateSynopsis = true)
 class CmdInfo extends CmdBase {
 
-    static final public NAME = 'info'
+    //with 0 args -> print version,modified,system,...
+    @Parameters(description = 'Project name', arity = '0..1',paramLabel = "ProjectName")
+    String projectName
 
-    //@Parameter(description = 'project name')
-    @CommandLine.Parameters(description = 'Project name', arity = '0..1')
-    List<String> args
-
-    //@Parameter(names='-d',description = 'Show detailed information', arity = 0)
     @Option(names=['-d'], description = 'Show detailed information', arity = '0')
     boolean detailed
 
-    //@Parameter(names='-dd', hidden = true, arity = 0)
-    @Option(names=['-dd'], description = 'Show more detailed information',hidden = true, arity = '0')
+    @Option(names=['--dd'], description = 'Show more detailed information',hidden = true, arity = '0')
     boolean moreDetailed
-
-    @Override
-    final String getName() { NAME }
 
     @Override
     void run() {
         int level = moreDetailed ? 2 : ( detailed ? 1 : 0 )
-        if( !args ) {
+        if( !projectName ) {
             println getInfo(level)
             return
         }
 
-        def manager = new AssetManager(args[0])
+        def manager = new AssetManager(projectName)
         if( !manager.isLocal() )
-            throw new AbortOperationException("Unknown project `${args[0]}`")
+            throw new AbortOperationException("Unknown project `${projectName}`")
 
         println " project name: ${manager.project}"
         println " repository  : ${manager.repositoryUrl}"

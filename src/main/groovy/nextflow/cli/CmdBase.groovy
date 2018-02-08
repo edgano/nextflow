@@ -20,26 +20,61 @@
 
 package nextflow.cli
 
-import com.beust.jcommander.Parameter
-import picocli.CommandLine
-
+import nextflow.CommandLine
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.Option
 /**
  * Implement command shared methods
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-@CommandLine.Command (name = "Base")
 abstract class CmdBase implements Runnable {
 
     private Launcher launcher
 
-    abstract def String getName()
+    String getName() {
+        this.class.getAnnotation(Command)?.name()
+    }
 
     Launcher getLauncher() { launcher }
 
     void setLauncher( Launcher value ) { this.launcher = value }
 
-    //@Parameter(names=['-h','-help'], description = 'Print the command usage', arity = 0, help = true)
-    @CommandLine.Option(names=['-h','--help'], description = 'Print the command usage', usageHelp = true, arity = '0', help = true)
+    @Option(names=['-h','--help'], description = 'Print the command usage', arity = '0', usageHelp = true)
     boolean help
+
+    protected List<? extends CmdBase> getSubCommands() { Collections.emptyList() }
+
+    protected CommandLine register(CommandLine parent) {
+        final name = getName()
+        if( !name )
+            throw new IllegalStateException("Make sure command ${this.class.simpleName} defines a name attibute using the @Command annotation")
+        final children = getSubCommands()
+        if( !children ) {
+            def cmd = new CommandLine(this)
+            parent.addSubcommand(name, cmd)
+            return cmd
+        }
+        else {
+            final cmd = new CommandLine(this)
+            for( CmdBase it : children )
+                it.register(cmd)
+            parent.addSubcommand(name, cmd)
+            return cmd
+        }
+    }
+
+    protected void usage(String cmdName) {
+        def cmd = launcher.findCommand(cmdName)
+        if( cmd ) {
+            launcher.usage(cmd)
+        }
+        else {
+            println "Unknown command: $cmdName"
+        }
+    }
+
+    protected void usage() {
+        usage(this.getName())
+    }
 }

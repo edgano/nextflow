@@ -19,13 +19,14 @@
  */
 
 package nextflow.cli
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.Parameters
+
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.exception.AbortOperationException
 import nextflow.scm.AssetManager
-import picocli.CommandLine
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.Option
+import nextflow.CommandLine.Parameters
 
 /**
  * CLI sub-command PULL
@@ -34,27 +35,17 @@ import picocli.CommandLine
  */
 @Slf4j
 @CompileStatic
-//@Parameters(commandDescription = "Download or update a project")
-@CommandLine.Command(name = "Pull", description ="Download or update a project")
+@Command(name = "pull", description = "Download or update a project", abbreviateSynopsis = true)
 class CmdPull extends CmdBase implements HubOptions {
 
-    static final public NAME = 'pull'
-
-    //@Parameter(description = 'project name or repository url to pull', arity = 1)
-    @CommandLine.Parameters(description = 'project name or repository url to pull', arity = '1')
+    @Parameters(description = 'Project name or repository url to pull', arity = '0..1',paramLabel = "Name") // 0 bc we can call --all
     List<String> args
 
-    //@Parameter(names='-all', description = 'Update all downloaded projects', arity = 0)
-    @CommandLine.Option(names=['--all'], description = 'Update all downloaded projects', arity = '0')
+    @Option(names=['--all'], description = 'Update all downloaded projects', arity = '0')
     boolean all
 
-    //@Parameter(names=['-r','-revision'], description = 'Revision of the project to run (either a git branch, tag or commit SHA number)')
-    @CommandLine.Option(names=['-r','--revision'], description = 'Revision of the project to run (either a git branch, tag or commit SHA number)')
+    @Option(names=['-r','--revision'], description = 'Revision of the project to run (either a git branch, tag or commit SHA number)',paramLabel = "RevisionID")
     String revision
-
-
-    @Override
-    final String getName() { NAME }
 
     /* only for testing purpose */
     protected File root

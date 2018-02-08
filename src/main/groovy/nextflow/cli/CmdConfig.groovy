@@ -19,18 +19,19 @@
  */
 
 package nextflow.cli
+
 import java.nio.file.Path
 import java.nio.file.Paths
 
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.Parameters
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.config.ConfigBuilder
 import nextflow.exception.AbortOperationException
 import nextflow.scm.AssetManager
 import nextflow.util.ConfigHelper
-import picocli.CommandLine
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.Option
+import nextflow.CommandLine.Parameters
 
 /**
  *  Prints the pipeline configuration
@@ -39,35 +40,23 @@ import picocli.CommandLine
  */
 @Slf4j
 @CompileStatic
-//@Parameters(commandDescription = "Print a project configuration")
-@CommandLine.Command(name = "Config", description ="Print a project configuration")
+@Command(name = "config", description = "Print a project configuration", abbreviateSynopsis = true)
 class CmdConfig extends CmdBase {
 
-    static final public NAME = 'config'
-
-    @Parameter(description = 'project name')
-    @CommandLine.Parameters(description = "Project name")    //TODO is it mandatory?
+    @Parameters(description = "Project to configure",paramLabel = "Project Name")    //TODO is it mandatory?
     List<String> args = []
 
-    @Parameter(names=['-a','-show-profiles'], description = 'Show all configuration profiles')
-    @CommandLine.Option(names=['-a','--show-profiles'], description = 'Show all configuration profiles')
+    @Option(names=['-a','--show-profiles'], description = 'Show all configuration profiles')
     boolean showAllProfiles
 
-    @Parameter(names=['-profile'], description = 'Choose a configuration profile')
-    @CommandLine.Option(names=['--profile'], description = 'Choose a configuration profile')
+    @Option(names=['--profile'], description = 'Choose a configuration profile',paramLabel = "Profile")
     String profile
 
-    @Parameter(names = '-properties', description = 'Prints config using Java properties notation')
-    @CommandLine.Option(names =['--properties'], description = 'Prints config using Java properties notation')
+    @Option(names =['--properties'], description = 'Prints config using Java properties notation')
     boolean printProperties
 
-    @Parameter(names = '-flat', description = 'Print config using flat notation')
-    @CommandLine.Option(names =['--flat'], description = 'Print config using flat notation')
+    @Option(names =['--flat', '--flatten'], description = 'Print config using flat notation')
     boolean printFlatten
-
-
-    @Override
-    String getName() { NAME }
 
     private OutputStream stdout = System.out
 

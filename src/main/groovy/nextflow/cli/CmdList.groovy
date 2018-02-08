@@ -20,11 +20,10 @@
 
 package nextflow.cli
 
-import com.beust.jcommander.Parameters
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.scm.AssetManager
-import picocli.CommandLine
+import nextflow.CommandLine.Command
 
 /**
  * CLI sub-command LIST. Prints a list of locally installed pipelines
@@ -33,14 +32,8 @@ import picocli.CommandLine
  */
 @Slf4j
 @CompileStatic
-//@Parameters(commandDescription = "List all downloaded projects")
-@CommandLine.Command(name = "List", description ="List all downloaded projects")
+@Command(name = "list", description = "List all downloaded projects", abbreviateSynopsis = true)
 class CmdList extends CmdBase {
-
-    static final public NAME = 'list'
-
-    @Override
-    final String getName() { NAME }
 
     @Override
     void run() {

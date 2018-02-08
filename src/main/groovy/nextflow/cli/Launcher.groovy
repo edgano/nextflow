@@ -19,19 +19,9 @@
  */
 
 package nextflow.cli
-import static nextflow.Const.APP_BUILDNUM
-import static nextflow.Const.APP_NAME
-import static nextflow.Const.APP_VER
-import static nextflow.Const.SPLASH
 
-import java.lang.reflect.Field
+import static nextflow.Const.*
 
-import com.beust.jcommander.DynamicParameter
-import com.beust.jcommander.JCommander
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.ParameterException
-import com.beust.jcommander.Parameters
-import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
@@ -45,7 +35,7 @@ import nextflow.trace.TraceFileObserver
 import nextflow.util.LoggerHelper
 import org.codehaus.groovy.control.CompilationFailedException
 import org.eclipse.jgit.api.errors.GitAPIException
-import picocli.CommandLine
+import nextflow.CommandLine
 
 /**
  * Main application entry point. It parses the command line and
@@ -65,15 +55,16 @@ class Launcher {
 
     private CommandLine commandLine
 
+    private CommandLine parsedCommand
+
     private CliOptions options
 
     private boolean fullVersion
 
-    private CmdBase command
+    @PackageScope
+    <T extends CmdBase> T getCommand() { parsedCommand.getCommand() }
 
     private String cliString
-
-    //private List<CmdBase> allCommands
 
     private List<String> normalizedArgs
 
@@ -91,54 +82,73 @@ class Launcher {
     }
 
     protected void init() {
-        commandLine = new CommandLine(new CliOptions())
-                .addSubcommand("clean",   new CmdClean(launcher:this))
-                .addSubcommand("clone",   new CmdClone(launcher:this))
-                .addSubcommand("cloud",   new CmdCloud(launcher:this))
-                .addSubcommand("fs",   new CmdFs(launcher:this))
-                .addSubcommand("info",   new CmdInfo(launcher:this))
-                .addSubcommand("list",   new CmdList(launcher:this))
-                .addSubcommand("log",   new CmdLog(launcher:this))
-                .addSubcommand("pull",   new CmdPull(launcher:this))
-                .addSubcommand("run",   new CmdRun(launcher:this))
-                .addSubcommand("drop",   new CmdDrop(launcher:this))
-                .addSubcommand("config",   new CmdConfig(launcher:this))
-                .addSubcommand("node",   new CmdNode(launcher:this))
-                .addSubcommand("view",   new CmdView(launcher:this))
-                .addSubcommand("help",   new CmdHelp(launcher:this))
-                .addSubcommand("update",   new CmdSelfUpdate(launcher:this))
+        final commands = [
+                CmdClean,
+                CmdClone,
+                CmdCloud,
+                CmdFs,
+                CmdInfo,
+                CmdList,
+                CmdLog,
+                CmdPull,
+                CmdRun,
+                CmdDrop,
+                CmdConfig,
+                CmdNode,
+                CmdView,
+                CmdHelp,
+                CmdSelfUpdate
+        ]
 
+        options = new CliOptions()
+        commandLine = new CommandLine(options)
+
+        for( Class<? extends CmdBase> clazz : commands) {
+            def cmd = clazz.newInstance()
+            cmd.register(commandLine)
+        }
+        int columns = System.getenv('COLUMNS') as int
+        commandLine.setUsageWidth(columns)
     }
-    /**
-     * Create the Jcommander 'interpreter' and parse the command line arguments
-     */
-    //@Deprecated
-   // @PackageScope
-    /*uncher parseMainArgs(String... args) {
+
+
+    @Deprecated
+    protected List<CmdBase> getAllCommands() {
+        commandLine.getSubcommands().values().collect { cli -> cli.getCommand() as CmdBase }
+    }
+
+    Launcher parseMainArgs(String[] args) {
         this.cliString = System.getenv('NXF_CLI')
         this.colsString = System.getenv('COLUMNS')
-
-        def cols = getColumns()
-        if( cols )
-            jcommander.setColumnSize(cols)
+//        def cols = getColumns()
+//        if( cols )
+//            jcommander.setColumnSize(cols)
 
         normalizedArgs = normalizeArgs(args)
-        jcommander.parse( normalizedArgs as String[] )
-        fullVersion = '-version' in normalizedArgs
-        command = allCommands.find { it.name == jcommander.getParsedCommand()  }
+        this.parsedCommand = commandLine.parse(normalizedArgs.toArray(new String[normalizedArgs.size()])).last()
+        def cmd = parsedCommand.getCommand()
+        if( cmd instanceof CmdBase ) {
+            cmd.launcher = this
+            if( cmd instanceof CmdRun )
+                options.background = (cmd as CmdRun).backgroundFlag
+        }
+        else if( cmd instanceof CliOptions ) {
+            fullVersion = '--version' in normalizedArgs
+        }
+
         // whether is running a daemon
-        daemonMode = command instanceof CmdNode
+        daemonMode = parsedCommand.command instanceof CmdNode
         // set the log file name
         checkLogFileName()
 
         return this
-    }*/
+    }
 
     private void checkLogFileName() {
         if( !options.logFile ) {
             if( isDaemon() )
                 options.logFile = '.node-nextflow.log'
-            else if( command instanceof CmdRun || options.debug || options.trace )
+            else if( parsedCommand.command instanceof CmdRun || options.debug || options.trace )
                 options.logFile = ".nextflow.log"
         }
     }
@@ -179,12 +189,18 @@ class Launcher {
             def current = args[i++]
             normalized << current
 
-            // when the first argument is a file, it's supposed to be a script to be executed
-            if( i==1 && !commandLine.subcommands.keySet().find { it==current } && new File(current).isFile()  ) {
-                normalized.add(0,CmdRun.NAME)
+            //Parse from single dash (-) to double dash (--) if it's needed
+            if (current.startsWith('-') && current[1]!='-' && current.size()>2){
+                log.warn("Please use double dash (--) Use \"-$current\" instead of \"$current\"")
+                current = "-"+current
+                normalized[-1] = current
             }
 
-            else if( current == '-resume' ) {
+            // when the first argument is a file, it's supposed to be a script to be executed
+            if( i==1 && !allCommands.find { it.name == current } && new File(current).isFile()  ) {
+                normalized.add(0,CmdRun.NAME)
+            }
+            else if( current == '--resume' ) {
                 if( i<args.size() && !args[i].startsWith('-') && (args[i]=='last' || args[i] =~~ /[0-9a-f]{8}\-[0-9a-f]{4}\-[0-9a-f]{4}\-[0-9a-f]{4}\-[0-9a-f]{8}/) ) {
                     normalized << args[i++]
                 }
@@ -192,59 +208,59 @@ class Launcher {
                     normalized << 'last'
                 }
             }
-            else if( current == '-test' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--test' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << '%all'
             }
 
-            else if( current == '-with-drmaa' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--with-drmaa' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << '-'
             }
 
-            else if( current == '-with-trace' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--with-trace' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << TraceFileObserver.DEF_FILE_NAME
             }
 
-            else if( current == '-with-report' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--with-report' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << ReportObserver.DEF_FILE_NAME
             }
 
-            else if( current == '-with-timeline' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--with-timeline' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << TimelineObserver.DEF_FILE_NAME
             }
 
-            else if( current == '-with-dag' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--with-dag' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << GraphObserver.DEF_FILE_NAME
             }
 
-            else if( current == '-with-docker' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--with-docker' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << '-'
             }
 
-            else if( current == '-with-singularity' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--with-singularity' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << '-'
             }
 
-            else if( (current == '-N' || current == '-with-notification') && (i==args.size() || args[i].startsWith('-'))) {
+            else if( (current == '-N' || current == '--with-notification') && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << 'true'
             }
 
-            else if( (current == '-K' || current == '-with-k8s') && (i==args.size() || args[i].startsWith('-'))) {
+            else if( (current == '-K' || current == '--with-k8s') && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << 'true'
             }
 
-            else if( current == '-syslog' && (i==args.size() || args[i].startsWith('-') || commandLine.subcommands.keySet().find { it == args[i] } )) {
+            else if( current == '--syslog' && (i==args.size() || args[i].startsWith('-') || allCommands.find { it.name == args[i] } )) {
                 normalized << 'localhost'
             }
 
-            else if( current == '-dump-channels' && (i==args.size() || args[i].startsWith('-'))) {
+            else if( current == '--dump-channels' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << '*'
             }
 
-            else if( current ==~ /^\-\-[a-zA-Z\d].*/ && !current.contains('=') ) {
-                current += '='
-                current += ( i<args.size() && isValue(args[i]) ? args[i++] : 'true' )
-                normalized[-1] = current
-            }
+//            else if( current ==~ /^\-\-[a-zA-Z\d].*/ && !current.contains('=') ) {
+//                current += '='
+//                current += ( i<args.size() && isValue(args[i]) ? args[i++] : 'true' )
+//                normalized[-1] = current
+//            }
 
             else if( current ==~ /^\-process\..+/ && !current.contains('=')) {
                 current += '='
@@ -268,8 +284,8 @@ class Launcher {
                 i++
                 normalized << '-stdin'
             }
-        }
 
+        }
         return normalized
     }
 
@@ -280,8 +296,7 @@ class Launcher {
     }
 
     CommandLine findCommand( String cmdName ) {
-        commandLine.subcommands.get(cmdName)
-
+        cmdName ? commandLine.subcommands.get(cmdName) : commandLine
     }
 
     /**
@@ -291,80 +306,20 @@ class Launcher {
      * @param command The command for which get help or {@code null}
      * @return The usage string
      */
-    void usage(String command = null ) {
-
-        if( command ) {
-            def exists = commandLine.subcommands.keySet().find { it == command } != null
-            if( !exists ) {
-                println "Asking help for unknown command: $command"
-                return
-            }
-            commandLine.usage(command as PrintStream)
-            //ommander.usage(command)
-            return
-        }
-
-        println "Usage: nextflow [options] COMMAND [arg...]\n"
-        printOptions(CliOptions)
-        printCommands(allCommands)
+    void usage( CommandLine command ) {
+        command.usage(System.out)
     }
 
-    @CompileDynamic
-    protected void printOptions(Class clazz) {
-        List params = []
-        for( Field f : clazz.getDeclaredFields() ) {
-            def p = f.getAnnotation(Parameter)
-            if(!p)
-                p = f.getAnnotation(DynamicParameter)
-
-            if( p && !p.hidden() && p.description() && p.names() )
-                params.add(p)
-
-        }
-
-        params.sort(true) { it -> it.names()[0] }
-
-        println "Options:"
-        for( def p : params ) {
-            println "  ${p.names().join(', ')}"
-            println "     ${p.description()}"
-        }
-    }
-
-    protected void printCommands(CommandLine commands) {
-        println "\nCommands:"
-
-        int len = 0
-        def all = new TreeMap<String,String>()
-        Map<String, CommandLine> subcomands = commands.getSubcommands()
-
-
-        new ArrayList<CmdBase>(commands).each {
-            def description = it.getClass().getAnnotation(Parameters)?.commandDescription()
-            if( description ) {
-                all[it.name] = description
-                if( it.name.size()>len ) len = it.name.size()
-            }
-        }
-
-        all.each { String name, String desc ->
-            print '  '
-            print name.padRight(len)
-            print '   '
-            println desc
-        }
-        println ''
-    }
 
     Launcher command( String[] args ) {
         /*
          * CLI argument parsing
          */
         try {
-            parsePicoMainArgs(args)
+            parseMainArgs(args)
             LoggerHelper.configureLogger(this)
         }
-        catch( ParameterException e ) {
+        catch( CommandLine.PicocliException e ) {
             // print command line parsing errors
             // note: use system.err.println since if an exception is raised
             //       parsing the cli params the logging is not configured
@@ -379,48 +334,6 @@ class Launcher {
         return this
     }
 
-    Launcher parsePicoMainArgs( String[] args) {
-        this.cliString = System.getenv('NXF_CLI')
-        this.colsString = System.getenv('COLUMNS')
-
-        def top = new CommandLine(new CliOptions())
-        for( CmdBase cmd : allCommands ) {
-            top.addSubcommand( cmd.name, cmd )
-        }
-
-        def commands = top.parse(args)
-        def cmd = commands.last().getCommand()
-        if( cmd instanceof CmdBase ) {
-            cmd.launcher = this
-            command = cmd
-        }
-
-        // whether is running a daemon
-        daemonMode = command instanceof CmdNode
-        // set the log file name
-        checkLogFileName()
-
-        return this
-    }
-
-    protected void checkForHelp() {
-        if( options.help || !command || command.help ) {
-            if( command instanceof UsageAware ) {
-                (command as UsageAware).usage()
-                // reset command to null to skip default execution
-                command = null
-                return
-            }
-
-            // replace the current command with the `help` command
-            def target = command?.name
-            command = allCommands.find { it instanceof CmdHelp }
-            if( target ) {
-                (command as CmdHelp).args = [target]
-            }
-        }
-
-    }
 
     /**
      * Launch the pipeline execution
@@ -445,10 +358,13 @@ class Launcher {
             }
 
             // -- print out the program help, then exit
-            checkForHelp()
-
-            // launch the command
-            command?.run()
+            if( parsedCommand.isUsageHelpRequested() || !parsedCommand.parent ) {
+                usage(parsedCommand)
+            }
+            else {
+                // launch the command
+                (parsedCommand.command as CmdBase).run()
+            }
 
             log.trace "Exit\n" + dumpThreads()
             return 0

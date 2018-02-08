@@ -19,10 +19,10 @@
  */
 
 package nextflow.cli
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.Parameters
+
 import groovy.transform.CompileStatic
-import picocli.CommandLine
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.Parameters
 
 /**
  * CLI sub-command HELP
@@ -30,32 +30,15 @@ import picocli.CommandLine
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
-//@Parameters(commandDescription = "Print the usage help for a command")
-@CommandLine.Command(name = "Help", description ="Print the usage help for a command")
+@Command(name = "help", description = "Print command usage help", abbreviateSynopsis = true)
 class CmdHelp extends CmdBase {
 
-    static final public NAME = 'help'
-
-    @Override
-    final String getName() { NAME }
-
-    //@Parameter(description = 'command name', arity = 1)
-    @CommandLine.Parameters(arity = "1", description = "Command name")
+    @Parameters(arity = "0..1", description = "Command name")
     List<String> args
-
-    private UsageAware getUsage( List<String> args ) {
-        def result = args ? launcher.findCommand(args[0]) : null
-        result instanceof UsageAware ? result as UsageAware: null
-    }
 
     @Override
     void run() {
-        def cmd = getUsage(args)
-        if( cmd ) {
-            cmd.usage(args.size()>1 ? args[1..-1] : Collections.<String>emptyList())
-        }
-        else {
-            launcher.usage(args ? args[0] : null)
-        }
+        String name = args ? args[0] : null
+        usage(name)
     }
 }

@@ -19,13 +19,10 @@
  */
 
 package nextflow.cli
+
 import java.nio.file.Files
 import java.nio.file.Path
 
-import com.beust.jcommander.DynamicParameter
-import com.beust.jcommander.IStringConverter
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.Parameters
 import groovy.json.JsonSlurper
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
@@ -42,8 +39,12 @@ import nextflow.util.CustomPoolFactory
 import nextflow.util.Duration
 import nextflow.util.HistoryFile
 import org.yaml.snakeyaml.Yaml
-import picocli.CommandLine
 
+import nextflow.CommandLine
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.ITypeConverter
+import nextflow.CommandLine.Option
+import nextflow.CommandLine.Parameters
 /**
  * CLI sub-command RUN
  *
@@ -51,9 +52,10 @@ import picocli.CommandLine
  */
 @Slf4j
 @CompileStatic
-//@Parameters(commandDescription = "Execute a pipeline project")
-@CommandLine.Command(name = "Run", description ="Execute a pipeline project")
+@Command(name = "run", description = "Execute a pipeline project", abbreviateSynopsis = true)
 class CmdRun extends CmdBase implements HubOptions {
+
+    static public String NAME = 'run'
 
     static List<String> VALID_PARAMS_FILE = ['json', 'yml', 'yaml']
 
@@ -62,7 +64,7 @@ class CmdRun extends CmdBase implements HubOptions {
         GParsConfig.poolFactory = new CustomPoolFactory()
     }
 
-    static class DurationConverter implements CommandLine.ITypeConverter<Long> {
+    static class DurationConverter implements ITypeConverter<Long> {
         @Override
         Long convert(String value) {
             if( !value ) throw new IllegalArgumentException()
@@ -71,186 +73,146 @@ class CmdRun extends CmdBase implements HubOptions {
         }
     }
 
-    static final public NAME = 'run'
-
-    //@Parameter(names=['-name'], description = 'Assign a mnemonic name to the a pipeline run')
-    @CommandLine.Option(names=['--name'], description = 'Assign a mnemonic name to the a pipeline run')
+    @Option(names=['--name'], description = 'assign a mnemonic name to the a pipeline run', paramLabel = "<name>")
     String runName
 
-    //@Parameter(names=['-lib'], description = 'Library extension path')
-    @CommandLine.Option(names=['--lib'], description = 'Library extension path')
+    @Option(names=['--lib'], description = 'library extension path', paramLabel = "<lib-path>")
     String libPath
 
-    //@Parameter(names=['-cache'], description = 'Enable/disable processes caching', arity = 1)
-    @CommandLine.Option(names=['--cache'], description = 'Enable/disable processes caching', arity = '1')
+    @Option(names=['--cache'], description = 'enable/disable processes caching', arity = '0..1')
     boolean cacheable = true
 
-    //@Parameter(names=['-resume'], description = 'Execute the script using the cached results, useful to continue executions that was stopped by an error')
-    @CommandLine.Option(names=['--resume'], description = 'Execute the script using the cached results, useful to continue executions that was stopped by an error')
+    @Option(names=['--resume'], description = 'execute the script using the cached results, useful to continue executions that was stopped by an error', arity = "0..1", paramLabel = "<session-id>")
     String resume
 
-    //@Parameter(names=['-ps','-pool-size'], description = 'Number of threads in the execution pool', hidden = true)
-    @CommandLine.Option(names=['-ps','--pool-size'], description = 'Number of threads in the execution pool', hidden = true)
+    @Option(names=['--ps','--pool-size'], description = 'number of threads in the execution pool', paramLabel = "<n>")
     Integer poolSize
 
-    //@Parameter(names=['-pi','-poll-interval'], description = 'Executor poll interval (duration string ending with ms|s|m)', converter = DurationConverter, hidden = true)
-    @CommandLine.Option(names=['-pi','--poll-interval'], description = 'Executor poll interval (duration string ending with ms|s|m)', converter = [DurationConverter], hidden = true)
+    @Option(names=['--pi','--poll-interval'], description = 'executor poll interval (duration string ending with ms|s|m)', converter = [DurationConverter], paramLabel = "<duration>")
     long pollInterval
 
-    //@Parameter(names=['-qs','-queue-size'], description = 'Max number of processes that can be executed in parallel by each executor')
-    @CommandLine.Option(names=['-qs','--queue-size'], description = 'Max number of processes that can be executed in parallel by each executor')
+    @Option(names=['--qs','--queue-size'], description = 'max number of processes that can be executed in parallel by each executor', paramLabel = "<n>")
     Integer queueSize
 
-    //@Parameter(names=['-test'], description = 'Test a script function with the name specified')
-    @CommandLine.Option(names=['--test'], description = 'Test a script function with the name specified')
+    @Option(names=['--test'], description = 'test a script function with the name specified', paramLabel = "<function-name>")
     String test
 
-    //@Parameter(names=['-w', '-work-dir'], description = 'Directory where intermediate result files are stored')
-    @CommandLine.Option(names=['-w', '--work-dir'], description = 'Directory where intermediate result files are stored')
+    @Option(names=['-w', '--work-dir'], description = 'directory where intermediate result files are stored',arity = '1', paramLabel = "<work-dir>")
     String workDir
+
+
+    @Option(names=['--params-file'], description = 'load script parameters from a JSON/YAML file',paramLabel = "<file-name>")
+    String paramsFile
+
+    @Option(names = ['--process'], description = 'set process options')
+    Map<String,String> process = [:]
+
+    @Option(names = ['--e'], description = 'add the specified variable to execution environment')
+    Map<String,String> env = [:]
+
+    @Option(names = ['-E'], description = 'exports all current system environment')
+    boolean exportSysEnv
+
+    @Option(names = ['--executor'], description = 'det executor options', hidden = true)
+    Map<String,String> executorOptions = [:]
+
+    @Option(names=['-r','--revision'], description = 'revision of the project to run (either a git branch, tag or commit SHA number)' )
+    String revision
+
+    @Option(names=['--latest'], description = 'pull latest changes before run')
+    boolean latest
+
+    @Option(names=['--stdin'], hidden = true)
+    boolean stdin
+
+    @Option(names = ['--with-drmaa'], description = 'enable DRMAA binding')
+    String withDrmaa
+
+    @Option(names = ['--with-trace'], description = 'create processes execution tracing file')
+    String withTrace
+
+    @Option(names = ['--with-report'], description = 'create processes execution html report')
+    String withReport
+
+    @Option(names = ['--with-timeline'], description = 'create processes execution timeline file')
+    String withTimeline
+
+    @Option(names = ['--with-singularity'], description = 'enable process execution in a Singularity container')
+    def withSingularity
+
+    @Option(names = ['--with-docker'], description = 'enable process execution in a Docker container')
+    def withDocker
+
+    @Option(names = ['--without-docker'], description = 'disable process execution with Docker', arity = '0')
+    boolean withoutDocker
+
+    @Option(names = ['--with-k8s', '-K'], description = 'enable execution in a Kubernetes cluster')
+    def withKubernetes
+
+    @Option(names = ['--with-mpi'], hidden = true)
+    boolean withMpi
+
+    @Option(names = ['--with-dag'], description = 'create pipeline DAG file')
+    String withDag
+
+    @Option(names = ['--bg'], arity = '0', description = 'launch the execution in background')
+    boolean backgroundFlag
+
+    @Option(names=['-c','--config'], hidden = true)
+    List<String> runConfig
+
+    @Option(names = ['--cluster'], description = 'set cluster options', hidden = true )
+    Map<String,String> clusterOptions = [:]
+
+    @Option(names=['--profile'], description = 'choose a configuration profile', paramLabel = "<profile-name>")
+    String profile
+
+    @Option(names=['--dump-hashes'], description = 'dump task hash keys for debugging purpose')
+    boolean dumpHashes
+
+    @Option(names=['--dump-channels'], description = 'dump channels for debugging purpose', paramLabel = "<channel-names>")
+    String dumpChannels
+
+    @Option(names=['-N','--with-notification'], description = 'send a notification email on workflow completion to the specified recipients', paramLabel = "<email-address>")
+    String withNotification
+
+    @Parameters(index = '0', arity = '1', description = 'workflow to execute, either a script file or a project repository')
+    String workflow
 
     /**
      * Defines the parameters to be passed to the pipeline script
      */
-    //@DynamicParameter(names = '--', description = 'Set a parameter used by the pipeline', hidden = true)
-    @CommandLine.Option(names = ['--'], description = 'Set a parameter used by the pipeline', hidden = true) //TODO really?? just '--'?
-    Map<String,String> params = new LinkedHashMap<>()
+    Map<String,String> params
 
-    //@Parameter(names='-params-file', description = 'Load script parameters from a JSON/YAML file')
-    @CommandLine.Option(names=['--params-file'], description = 'Load script parameters from a JSON/YAML file')
-    String paramsFile
-
-    //@DynamicParameter(names = ['-process.'], description = 'Set process options' )
-    @CommandLine.Option(names = ['--process'], description = 'Set process options' )
-    Map<String,String> process = [:]
-
-    //@DynamicParameter(names = ['-e.'], description = 'Add the specified variable to execution environment')
-    @CommandLine.Option(names = ['-e'], description = 'Add the specified variable to execution environment')
-    Map<String,String> env = [:]
-
-    //@Parameter(names = ['-E'], description = 'Exports all current system environment')
-    @CommandLine.Option(names = ['-E'], description = 'Exports all current system environment')
-    boolean exportSysEnv
-
-    //@DynamicParameter(names = ['-executor.'], description = 'Set executor options', hidden = true )
-    @CommandLine.Option(names = ['--executor'], description = 'Set executor options', hidden = true )
-    Map<String,String> executorOptions = [:]
-
-    //@Parameter(description = 'Project name or repository url')
-    @CommandLine.Parameters(description = 'Project name or repository url')
-    List<String> args
-
-    //@Parameter(names=['-r','-revision'], description = 'Revision of the project to run (either a git branch, tag or commit SHA number)')
-    @CommandLine.Option(names=['-r','--revision'], description = 'Revision of the project to run (either a git branch, tag or commit SHA number)')
-    String revision
-
-    //@Parameter(names=['-latest'], description = 'Pull latest changes before run')
-    @CommandLine.Option(names=['--latest'], description = 'Pull latest changes before run')
-    boolean latest
-
-    //@Parameter(names='-stdin', hidden = true)
-    @CommandLine.Option(names=['--stdin'], hidden = true)
-    boolean stdin
-
-    //@Parameter(names = ['-with-extrae'], description = 'Trace execution by using BSC Extrae', arity = 0, hidden = true)
-    @CommandLine.Option(names = ['--with-extrae'], description = 'Trace execution by using BSC Extrae', arity = '0', hidden = true)
-    boolean withExtrae
-
-    //@Parameter(names = ['-with-drmaa'], description = 'Enable DRMAA binding')
-    @CommandLine.Option(names = ['--with-drmaa'], description = 'Enable DRMAA binding')
-    String withDrmaa
-
-    //@Parameter(names = ['-with-trace'], description = 'Create processes execution tracing file')
-    @CommandLine.Option(names = ['--with-trace'], description = 'Create processes execution tracing file')
-    String withTrace
-
-    //@Parameter(names = ['-with-report'], description = 'Create processes execution html report')
-    @CommandLine.Option(names = ['--with-report'], description = 'Create processes execution html report')
-    String withReport
-
-    //@Parameter(names = ['-with-timeline'], description = 'Create processes execution timeline file')
-    @CommandLine.Option(names = ['--with-timeline'], description = 'Create processes execution timeline file')
-    String withTimeline
-
-    //@Parameter(names = '-with-singularity', description = 'Enable process execution in a Singularity container')
-    @CommandLine.Option(names = ['--with-singularity'], description = 'Enable process execution in a Singularity container')
-    def withSingularity
-
-    //@Parameter(names = '-with-docker', description = 'Enable process execution in a Docker container')
-    @CommandLine.Option(names = ['--with-docker'], description = 'Enable process execution in a Docker container')
-    def withDocker
-
-    //@Parameter(names = '-without-docker', description = 'Disable process execution with Docker', arity = 0)
-    @CommandLine.Option(names = ['--without-docker'], description = 'Disable process execution with Docker', arity = '0')
-    boolean withoutDocker
-
-    //@Parameter(names = ['-with-k8s', '-K'], description = 'Enable execution in a Kubernetes cluster')
-    @CommandLine.Option(names = ['--with-k8s', '-K'], description = 'Enable execution in a Kubernetes cluster')
-    def withKubernetes
-
-    //@Parameter(names = '-with-mpi', hidden = true)
-    @CommandLine.Option(names = ['--with-mpi'], hidden = true)
-    boolean withMpi
-
-    //@Parameter(names = '-with-dag', description = 'Create pipeline DAG file')
-    @CommandLine.Option(names = ['--with-dag'], description = 'Create pipeline DAG file')
-    String withDag
-
-    @Parameter(names = ['-bg'], arity = 0, hidden = true)
-    //TODO
-    void setBackground(boolean value) {
-        launcher.options.background = value
-    }
-
-    //@Parameter(names=['-c','-config'], hidden = true )
-    @CommandLine.Option(names=['-c','--config'], hidden = true )
-    List<String> runConfig
-
-    //@DynamicParameter(names = ['-cluster.'], description = 'Set cluster options', hidden = true )
-    @CommandLine.Option(names = ['--cluster'], description = 'Set cluster options', hidden = true )
-    Map<String,String> clusterOptions = [:]
-
-    //@Parameter(names=['-profile'], description = 'Choose a configuration profile')
-    @CommandLine.Option(names=['--profile'], description = 'Choose a configuration profile')
-    String profile
-
-    //@Parameter(names=['-dump-hashes'], description = 'Dump task hash keys for debugging purpose')
-    @CommandLine.Option(names=['--dump-hashes'], description = 'Dump task hash keys for debugging purpose')
-    boolean dumpHashes
-
-    //@Parameter(names=['-dump-channels'], description = 'Dump channels for debugging purpose')
-    @CommandLine.Option(names=['--dump-channels'], description = 'Dump channels for debugging purpose')
-    String dumpChannels
-
-    //@Parameter(names=['-N','-with-notification'], description = 'Send a notification email on workflow completion to the specified recipients')
-    @CommandLine.Option(names=['-N','--with-notification'], description = 'Send a notification email on workflow completion to the specified recipients')
-    String withNotification
+    private CommandLine cli
 
     @Override
-    final String getName() { NAME }
+    protected CommandLine register(CommandLine parent) {
+        this.cli = super.register(parent)
+        cli.setUnmatchedArgumentsAllowed(true)
+        return cli
+    }
 
     @Override
     void run() {
-        final scriptArgs = (args?.size()>1 ? args[1..-1] : []) as List<String>
-        final pipeline = stdin ? '-' : ( args ? args[0] : null )
-        if( !pipeline )
-            throw new AbortOperationException("No project name was specified")
+        if( !test )
+            params = makeParams( cli.getUnmatchedArguments() )
 
         if( withDocker && withoutDocker )
-            throw new AbortOperationException("Command line options `-with-docker` and `-without-docker` cannot be specified at the same time")
+            throw new AbortOperationException("Command line options `--with-docker` and `--without-docker` cannot be specified at the same time")
 
         checkRunName()
 
         if( withKubernetes ) {
             // that's another story
-            new K8sDriverLauncher(cmd: this, runName: runName).run(pipeline, scriptArgs)
+            new K8sDriverLauncher(cmd: this, runName: runName).run(workflow)
             return
         }
 
         log.info "N E X T F L O W  ~  version ${Const.APP_VER}"
 
         // -- specify the arguments
-        final scriptFile = getScriptFile(pipeline)
+        final scriptFile = getScriptFile(workflow)
 
         // create the config object
         final config = new ConfigBuilder()
@@ -264,7 +226,7 @@ class CmdRun extends CmdBase implements HubOptions {
         runner.profile = profile
 
         if( this.test ) {
-            runner.test(this.test, scriptArgs)
+            runner.test(this.test, cli.getUnmatchedArguments() )
             return
         }
 
@@ -275,7 +237,7 @@ class CmdRun extends CmdBase implements HubOptions {
         runner.verifyAndTrackHistory(launcher.cliString, runName)
 
         // -- run it!
-        runner.execute(scriptArgs)
+        runner.execute()
     }
 
     private void checkRunName() {
@@ -325,7 +287,7 @@ class CmdRun extends CmdBase implements HubOptions {
         }
 
         /*
-         * try to look for a pipeline in the repository
+         * try to look for a pipeline in the repnormalizeArgsository
          */
         def manager = new AssetManager(pipelineName, this)
         def repo = manager.getProject()
@@ -441,6 +403,50 @@ class CmdRun extends CmdBase implements HubOptions {
         catch( Exception e ) {
             throw new AbortOperationException("Cannot parse params file: $file", e)
         }
+    }
+
+    protected Map<String,String> makeParams(List<String> args) {
+        if( args == null )
+            return Collections.emptyMap()
+        
+        List<String> normalise = new ArrayList<>(args.size()*2)
+        Map<String,String> result = [:]
+
+        for( String item : args ) {
+            int p = item.indexOf('=')
+            if( p!=-1 && item.startsWith('--') ) {
+                normalise << item.substring(0,p)
+                normalise << item.substring(p+1)
+            }
+            else {
+                normalise << item
+            }
+        }
+
+        String current=null
+        for( String item : normalise ) {
+            if( item =~ /^--\w/ ) {
+                current = item.substring(2)
+            }
+            else if( current ) {
+                result.put(current, item)
+//                def value = result.get(current)
+//                if( value==null ) {
+//                    result.put(current, item)
+//                }
+//                else if( value instanceof List ) {
+//                    value.add(item)
+//                }
+//                else {
+//                    result.put( current, [value, item] )
+//                }
+            }
+            else {
+                throw new IllegalArgumentException("Not a valid workflow parameter: $item")
+            }
+        }
+
+        return result
     }
 
 }

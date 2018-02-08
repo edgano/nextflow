@@ -25,8 +25,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.Parameters
 import com.google.common.hash.HashCode
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
@@ -35,7 +33,9 @@ import nextflow.exception.AbortOperationException
 import nextflow.file.FileHelper
 import nextflow.trace.TraceRecord
 import nextflow.util.HistoryFile.Record
-import picocli.CommandLine
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.Option
+import nextflow.CommandLine.Parameters
 
 /**
  * Implements cache clean up command
@@ -44,51 +44,33 @@ import picocli.CommandLine
  */
 @Slf4j
 @CompileStatic
-//@Parameters(commandDescription = "Clean up project cache and work directories")
-@CommandLine.Command (name = "Clean", description ="Clean up project cache and work directories")
+@Command (name = "clean", description = "Clean up project cache and work directories", abbreviateSynopsis = true, showDefaultValues = true)
 class CmdClean extends CmdBase implements CacheBase {
 
-    static final public NAME = 'clean'
-
-    //@Parameter(names=['-q', '-quiet'], description = 'Do not print names of files removed', arity = 0)
-    @CommandLine.Option(names=['-q', '--quiet'], description = 'Do not print names of files removed', arity = '0')
+    @Option(names=['-q', '--quiet'], description = 'Do not print names of files removed', arity = '0')
     boolean quiet
 
-    //@Parameter(names=['-f', '-force'], description = 'Force clean command', arity = 0)
-    @CommandLine.Option(names=['-f', '--force'], description = 'Force clean command', arity = '0')
+    @Option(names=['-f', '--force'], description = 'Force clean command', arity = '0')
     boolean force
 
-    //@Parameter(names=['-n', '-dry-run'], description = 'Print names of file to be removed without deleting them' , arity = 0)
-    @CommandLine.Option(names=['-n', '--dry-run'], description = 'Print names of file to be removed without deleting them' , arity = '0')
+    @Option(names=['-n', '--dry-run'], description = 'Print names of file to be removed without deleting them' , arity = '0')
     boolean dryRun
 
-    //@Parameter(names='-after', description = 'Clean up runs executed after the specified one')
-    @CommandLine.Option(names='--after', description = 'Clean up runs executed after the specified one')
+    @Option(names='--after', description = 'Clean up runs executed after the specified one', paramLabel = "Process")
     String after
 
-    //@Parameter(names='-before', description = 'Clean up runs executed before the specified one')
-    @CommandLine.Option(names='--before', description = 'Clean up runs executed before the specified one')
+    @Option(names='--before', description = 'Clean up runs executed before the specified one',paramLabel = "Process")
     String before
 
-    //@Parameter(names='-but', description = 'Clean up all runs except the specified one')
-    @CommandLine.Option(names='--but', description = 'Clean up all runs except the specified one')
+    @Option(names='--but', description = 'Clean up all runs except the specified one',paramLabel = "Process")
     String but
 
-    //@Parameter
-    @CommandLine.Parameters(description = "")    //TODO is it mandatory?
+    @Parameters(description = "")    //TODO is it mandatory?
     List<String> args
 
     private CacheDB currentCacheDb
 
     private Map<HashCode, Short> dryHash = new HashMap<>()
-
-    /**
-     * @return The name of this command {@code clean}
-     */
-    @Override
-    String getName() {
-        return NAME
-    }
 
     /**
      * Command entry method

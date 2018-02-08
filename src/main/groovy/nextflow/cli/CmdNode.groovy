@@ -19,16 +19,17 @@
  */
 
 package nextflow.cli
-import com.beust.jcommander.DynamicParameter
-import com.beust.jcommander.Parameter
-import com.beust.jcommander.Parameters
+
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.config.ConfigBuilder
 import nextflow.daemon.DaemonLauncher
 import nextflow.util.ServiceName
 import nextflow.util.ServiceDiscover
-import picocli.CommandLine
+
+import nextflow.CommandLine.Command
+import nextflow.CommandLine.Option
+import nextflow.CommandLine.Parameters
 
 /**
  * CLI-command NODE
@@ -36,34 +37,24 @@ import picocli.CommandLine
  */
 @Slf4j
 @CompileStatic
-//@Parameters
-@CommandLine.Command(name = "Node")
+@Command(name = "node", abbreviateSynopsis = true, description = 'Launch nextflow daemon node')
 class CmdNode extends CmdBase {
 
-    static final public NAME = 'node'
-
-    @Override
-    final String getName() { NAME }
-
-    //@DynamicParameter(names ='-cluster.', description='Define cluster config options')
-    @CommandLine.Option(names =['--cluster'],description = 'Define cluster config options')
+    @Option(names =['--cluster'],description = 'Define cluster config options',paramLabel = "Key:Value")
     Map<String,String> clusterOptions = [:]
 
-    //@Parameter(names = ['-bg'], arity = 0, description = 'Start the cluster node daemon in background')
-    //TODO
-    void setBackground(boolean value) {
-        launcher.options.background = value
-    }
 
-    //@Parameter
-    @CommandLine.Parameters(description = 'Provider')
+    @Option(names = ['--bg'], arity = '0', description = 'Start the cluster node daemon in background')
+    boolean backgroundFlag
+
+    @Parameters(description = 'Provider',paramLabel = "Provider_Name")
     List<String> provider
 
     @Override
     void run() {
+        launcher.options.background = backgroundFlag
         launchDaemon(provider ? provider[0] : null)
     }
-
 
     /**
      * Launch the daemon service
