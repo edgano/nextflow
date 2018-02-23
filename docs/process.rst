@@ -498,7 +498,7 @@ usual square brackets notation.
 When a target file name is defined in the input parameter and a collection of files is received by the process,
 the file name will be appended by a numerical suffix representing its ordinal position in the list. For example::
 
-    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(count:3)
+    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(size:3)
 
     process blastThemAll {
         input:
@@ -533,7 +533,7 @@ Cardinality   Name pattern     Staged file names
 The following fragment shows how a wildcard can be used in the input file declaration::
 
 
-    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(count:3)
+    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(size:3)
 
     process blastThemAll {
         input:
@@ -1215,8 +1215,8 @@ You can use it to request non-standard resources or use settings that are specif
 out of the box by Nextflow.
 
 .. note:: This directive is taken in account only when using a grid based executor:
-  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor`,
-  :ref:`condor-executor` and :ref:`drmaa-executor` executors.
+  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor` and
+  :ref:`condor-executor` executors.
 
 .. _process-disk:
 
@@ -1615,6 +1615,7 @@ Table of publish modes:
 symlink         Creates a `symbolic link` in the published directory for each process output file (default).
 link            Creates a `hard link` in the published directory for each process output file.
 copy            Copies the output files into the published directory.
+copyNoFollow    Copies the output files into the published directory without following symlinks ie. copies the links themselves. 
 move            Moves the output files into the published directory. **Note**: this is only supposed to be used for a `terminating` process i.e. a process whose output is not consumed by any other downstream process.
 =============== =================
 
@@ -1674,7 +1675,7 @@ Multiple queues can be specified by separating their names with a comma for exam
 
 
 .. note:: This directive is taken in account only by the following executors: :ref:`sge-executor`, :ref:`lsf-executor`,
-  :ref:`slurm-executor`, :ref:`pbs-executor` and :ref:`drmaa-executor` executors.
+  :ref:`slurm-executor` and :ref:`pbs-executor` executors.
 
 .. _process-scratch:
 
@@ -1876,8 +1877,8 @@ d       Days
 ======= =============
 
 .. note:: This directive is taken in account only when using one of the following grid based executors:
-  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor`,
-  :ref:`condor-executor` and :ref:`drmaa-executor` executors.
+  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor` and
+  :ref:`condor-executor` executors.
 
 See also: `cpus`_, `memory`_, `queue`_ and `Dynamic computing resources`_.
 

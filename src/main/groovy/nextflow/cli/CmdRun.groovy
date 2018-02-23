@@ -152,6 +152,8 @@ class CmdRun extends CmdBase implements HubOptions {
     @CommandLine.Option(names=['--stdin'], hidden = true)
     boolean stdin
 
+    @Parameter(names = ['-with-trace'], description = 'Create processes execution tracing file')
+
     //@Parameter(names = ['-with-extrae'], description = 'Trace execution by using BSC Extrae', arity = 0, hidden = true)
     @CommandLine.Option(names = ['--with-extrae'], description = 'Trace execution by using BSC Extrae', arity = '0', hidden = true)
     boolean withExtrae
@@ -160,9 +162,7 @@ class CmdRun extends CmdBase implements HubOptions {
     @CommandLine.Option(names = ['--with-drmaa'], description = 'Enable DRMAA binding')
     String withDrmaa
 
-    //@Parameter(names = ['-with-trace'], description = 'Create processes execution tracing file')
-    @CommandLine.Option(names = ['--with-trace'], description = 'Create processes execution tracing file')
-    String withTrace
+
 
     //@Parameter(names = ['-with-report'], description = 'Create processes execution html report')
     @CommandLine.Option(names = ['--with-report'], description = 'Create processes execution html report')

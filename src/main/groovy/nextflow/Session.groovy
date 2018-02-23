@@ -49,7 +49,6 @@ import nextflow.processor.TaskFault
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.script.ScriptBinding
-import nextflow.trace.ExtraeTraceObserver
 import nextflow.trace.GraphObserver
 import nextflow.trace.ReportObserver
 import nextflow.trace.StatsObserver
@@ -170,7 +169,7 @@ class Session implements ISession {
 
     private int poolSize
 
-    private Queue<TraceObserver> observers
+    private List<TraceObserver> observers
 
     private Closure errorAction
 
@@ -322,14 +321,13 @@ class Session implements ISession {
      * @return A list of {@link TraceObserver} objects or an empty list
      */
     @PackageScope
-    Queue createObservers() {
-        def result = new ConcurrentLinkedQueue()
+    List<TraceObserver> createObservers() {
+        def result = new ArrayList(10)
 
         createStatsObserver(result)     // keep as first, because following may depend on it
         createTraceFileObserver(result)
         createReportObserver(result)
         createTimelineObserver(result)
-        createExtraeObserver(result)
         createDagObserver(result)
 
         return result
@@ -341,21 +339,6 @@ class Session implements ISession {
         result << observer
     }
 
-    /**
-     * create the Extrae trace observer
-     */
-    protected void createExtraeObserver(Collection<TraceObserver> result) {
-        Boolean isEnabled = config.navigate('extrae.enabled') as Boolean
-        if( isEnabled ) {
-            try {
-                log.warn "The support for Extrae profiling has been deprecated and it will be removed in a future release"
-                result << new ExtraeTraceObserver()
-            }
-            catch( Exception e ) {
-                log.warn("Unable to load Extrae profiler",e)
-            }
-        }
-    }
 
     /**
      * Create workflow report file observer
@@ -600,14 +583,14 @@ class Session implements ISession {
         }
 
         // -- invoke observers completion handlers
-        while( observers.size() ) {
-            def trace = observers.poll()
+        def copy = new ArrayList<TraceObserver>(observers)
+        for( TraceObserver observer : copy  ) {
             try {
-                if( trace )
-                    trace.onFlowComplete()
+                if( observer )
+                    observer.onFlowComplete()
             }
             catch( Exception e ) {
-                log.debug "Failed to invoke observer completion handler: $trace", e
+                log.debug "Failed to invoke observer completion handler: $observer", e
             }
         }
 
@@ -674,7 +657,7 @@ class Session implements ISession {
     }
 
     private void operatorsForceTermination() {
-        def operators = (DataflowProcessor[])allOperators.toArray()
+        def operators = allOperators.toArray() as DataflowProcessor[]
         for( int i=0; i<operators.size(); i++ ) {
             operators[i].terminate()
         }
@@ -760,9 +743,10 @@ class Session implements ISession {
     }
 
     void notifyProcessCreate(TaskProcessor process) {
-        for( TraceObserver it : observers ) {
+        for( int i=0; i<observers.size(); i++ ) {
+            final observer = observers.get(i)
             try {
-                it.onProcessCreate(process)
+                observer.onProcessCreate(process)
             }
             catch( Exception e ) {
                 log.debug(e.getMessage(), e)
@@ -780,9 +764,10 @@ class Session implements ISession {
         // -- save a record in the cache index
         cache.putIndexAsync(handler)
 
-        for( TraceObserver it : observers ) {
+        for( int i=0; i<observers.size(); i++ ) {
+            final observer = observers.get(i)
             try {
-                it.onProcessSubmit(handler)
+                observer.onProcessSubmit(handler, handler.getTraceRecord())
             }
             catch( Exception e ) {
                 log.debug(e.getMessage(), e)
@@ -794,9 +779,10 @@ class Session implements ISession {
      * Notifies task start event
      */
     void notifyTaskStart( TaskHandler handler ) {
-        for( TraceObserver it : observers ) {
+        for( int i=0; i<observers.size(); i++ ) {
+            final observer = observers.get(i)
             try {
-                it.onProcessStart(handler)
+                observer.onProcessStart(handler, handler.getTraceRecord())
             }
             catch( Exception e ) {
                 log.debug(e.getMessage(), e)
@@ -811,12 +797,14 @@ class Session implements ISession {
      */
     void notifyTaskComplete( TaskHandler handler ) {
         // save the completed task in the cache DB
-        cache.putTaskAsync(handler)
+        final trace = handler.getTraceRecord()
+        cache.putTaskAsync(handler, trace)
 
         // notify the event to the observers
-        for( TraceObserver it : observers ) {
+        for( int i=0; i<observers.size(); i++ ) {
+            final observer = observers.get(i)
             try {
-                it.onProcessComplete(handler)
+                observer.onProcessComplete(handler, trace)
             }
             catch( Exception e ) {
                 log.debug(e.getMessage(), e)
@@ -829,9 +817,10 @@ class Session implements ISession {
         // -- save a record in the cache index
         cache.cacheTaskAsync(handler)
 
-        for( TraceObserver it : observers ) {
+        for( int i=0; i<observers.size(); i++ ) {
+            final observer = observers.get(i)
             try {
-                it.onProcessCached(handler)
+                observer.onProcessCached(handler, handler.getTraceRecord())
             }
             catch( Exception e ) {
                 log.error(e.getMessage(), e)

@@ -25,6 +25,7 @@ import java.nio.file.Path
 import ch.grengine.Grengine
 import nextflow.file.FileHelper
 import org.codehaus.groovy.control.CompilerConfiguration
+import org.codehaus.groovy.control.customizers.ASTTransformationCustomizer
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 /**
@@ -39,16 +40,22 @@ import org.slf4j.LoggerFactory
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-abstract class ComposedConfigScript extends Script {
+abstract class ConfigBase extends Script {
 
-    private static final Logger log = LoggerFactory.getLogger(ComposedConfigScript)
+    private static final Logger log = LoggerFactory.getLogger(ConfigBase)
 
     private Stack<Path> configStack
 
     private boolean ignoreIncludes
 
+    private boolean renderClosureAsString
+
     protected void setIgnoreIncludes( boolean value ) {
         this.ignoreIncludes = value
+    }
+
+    protected void setRenderClosureAsString( boolean value ) {
+        this.renderClosureAsString = value
     }
 
     protected void setConfigPath(Path path) {
@@ -86,7 +93,9 @@ abstract class ComposedConfigScript extends Script {
 
         // -- set the required base script
         def config = new CompilerConfiguration()
-        config.scriptBaseClass = ComposedConfigScript.class.name
+        config.scriptBaseClass = ConfigBase.class.name
+        if( renderClosureAsString )
+            config.addCompilationCustomizers(new ASTTransformationCustomizer(ConfigTransform))
 
         // -- setup the grengine instance
         def engine = new Grengine(this.class.classLoader,config)
@@ -98,7 +107,7 @@ abstract class ComposedConfigScript extends Script {
         /*
          * here it is the magic code
          */
-        def script = (ComposedConfigScript)clazz.newInstance()
+        def script = (ConfigBase)clazz.newInstance()
         script.setConfigStack(this.configStack)
         script.setBinding(this.getBinding())
         script.metaClass.getProperty = { String name -> this.metaClass.getProperty(this, name) }

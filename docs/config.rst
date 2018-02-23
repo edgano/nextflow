@@ -591,6 +591,12 @@ This configuration defines three different profiles: ``standard``, ``cluster`` a
 configuration strategies depending on the target runtime platform. By convention the ``standard`` profile is implicitly used
 when no other profile is specified by the user.
 
+.. tip:: Two or more configuration profiles can be specified by separating the profile names
+    with a comma character, for example::
+
+        nextflow run <your script> -profile standard,cloud
+
+The above feature requires version 0.28.x or higher. 
 
 Environment variables
 =====================
@@ -607,7 +613,6 @@ NXF_ORG                     Default `organization` prefix when looking for a hos
 NXF_GRAB                    Provides extra runtime dependencies downloaded from a Maven repository service.
 NXF_OPTS                    Provides extra options for the Java and Nextflow runtime. It must be a blank separated list of ``-Dkey[=value]`` properties.
 NXF_CLASSPATH               Allows to extend the Java runtime classpath with extra jar files or class folders.
-NXF_DRMAA                   Defines the Java DRMAA binding library to be used. It can be specified as a jar file location or a Maven coordinate.
 NXF_ASSETS                  Defined the directory where downloaded pipeline repositories are stored (default: ``$NXF_HOME/assets``)
 NXF_PID_FILE                Name of the file where the process PID is saved when Nextflow is launched in background.
 NXF_WORK                    Directory where working files are stored (usually your *scratch* directory)
@@ -615,8 +620,10 @@ NXF_TEMP                    Directory where temporary files are stored
 NXF_DEBUG                   Defines scripts debugging level: ``1`` dump task environment variables in the task log file; ``2`` enables command script execution tracing; ``3`` enables command wrapper execution tracing.
 NXF_EXECUTOR                Defines the default process executor e.g. `sge`
 NXF_SINGULARITY_CACHEDIR    Directory where remote Singularity images are stored. When using a computing cluster it must be a shared folder accessible to all computing nodes.
-JAVA_HOME                   Path location of the Java VM installation used to run Nextflow.
-JAVA_CMD                    Path location of the Java binary command used to launch  Nextflow.
+NXF_JAVA_HOME               Path location of the Java VM installation used to run Nextflow.
+NXF_JAVA_CMD                Path location of the Java binary command used to launch Nextflow.
+JAVA_HOME                   Defines the path location of the Java VM installation used to run Nextflow when ``NXF_JAVA_HOME`` is not defined.
+JAVA_CMD                    Defines the path location of the Java binary command used to launch Nextflow when ``NXF_JAVA_CMD`` is not defined.
 HTTP_PROXY                  Defines the HTTP proxy server
 HTTPS_PROXY                 Defines the HTTPS proxy server
 =========================== ================

@@ -95,6 +95,7 @@ class AwsBatchScriptLauncherTest extends Specification {
 
                 nxf_mktemp() {
                     local base=\${1:-/tmp}
+                    if [[ \$base == /dev/shm && ! -d \$base ]]; then base=/tmp; fi 
                     if [[ \$(uname) = Darwin ]]; then mktemp -d \$base/nxf.XXXXXXXXXX
                     else TMPDIR="\$base" mktemp -d -t nxf.XXXXXXXXXX
                     fi
@@ -106,8 +107,7 @@ class AwsBatchScriptLauncherTest extends Specification {
                   set +u
                   [[ "\$tee1" ]] && kill \$tee1 2>/dev/null
                   [[ "\$tee2" ]] && kill \$tee2 2>/dev/null
-                  [[ "\$COUT" ]] && rm -f "\$COUT" || true
-                  [[ "\$CERR" ]] && rm -f "\$CERR" || true
+                  [[ "\$ctmp" ]] && rm -rf \$ctmp || true
                   rm -rf \$NXF_SCRATCH || true
                   exit \$exit_status
                 }
@@ -149,15 +149,16 @@ class AwsBatchScriptLauncherTest extends Specification {
                 /conda/bin/aws --region eu-west-1 s3 cp --only-show-errors s3:/${folder}/.command.in .command.in
 
                 set +e
-                COUT=\$PWD/.command.po; mkfifo "\$COUT"
-                CERR=\$PWD/.command.pe; mkfifo "\$CERR"
-                tee .command.out < "\$COUT" &
+                ctmp=\$(nxf_mktemp /dev/shm)
+                cout=\$ctmp/.command.out; mkfifo \$cout
+                cerr=\$ctmp/.command.err; mkfifo \$cerr
+                tee .command.out < \$cout &
                 tee1=\$!
-                tee .command.err < "\$CERR" >&2 &
+                tee .command.err < \$cerr >&2 &
                 tee2=\$!
                 (
                 /bin/bash -ue .command.sh < .command.in
-                ) >"\$COUT" 2>"\$CERR" &
+                ) >\$cout 2>\$cerr &
                 pid=\$!
                 wait \$pid || ret=\$?
                 wait \$tee1 \$tee2
@@ -238,6 +239,7 @@ class AwsBatchScriptLauncherTest extends Specification {
 
                 nxf_mktemp() {
                     local base=\${1:-/tmp}
+                    if [[ \$base == /dev/shm && ! -d \$base ]]; then base=/tmp; fi 
                     if [[ \$(uname) = Darwin ]]; then mktemp -d \$base/nxf.XXXXXXXXXX
                     else TMPDIR="\$base" mktemp -d -t nxf.XXXXXXXXXX
                     fi
@@ -249,8 +251,7 @@ class AwsBatchScriptLauncherTest extends Specification {
                   set +u
                   [[ "\$tee1" ]] && kill \$tee1 2>/dev/null
                   [[ "\$tee2" ]] && kill \$tee2 2>/dev/null
-                  [[ "\$COUT" ]] && rm -f "\$COUT" || true
-                  [[ "\$CERR" ]] && rm -f "\$CERR" || true
+                  [[ "\$ctmp" ]] && rm -rf \$ctmp || true
                   rm -rf \$NXF_SCRATCH || true
                   exit \$exit_status
                 }
@@ -290,15 +291,16 @@ class AwsBatchScriptLauncherTest extends Specification {
                 aws s3 cp --only-show-errors s3:/${folder}/.command.in .command.in
 
                 set +e
-                COUT=\$PWD/.command.po; mkfifo "\$COUT"
-                CERR=\$PWD/.command.pe; mkfifo "\$CERR"
-                tee .command.out < "\$COUT" &
+                ctmp=\$(nxf_mktemp /dev/shm)
+                cout=\$ctmp/.command.out; mkfifo \$cout
+                cerr=\$ctmp/.command.err; mkfifo \$cerr
+                tee .command.out < \$cout &
                 tee1=\$!
-                tee .command.err < "\$CERR" >&2 &
+                tee .command.err < \$cerr >&2 &
                 tee2=\$!
                 (
                 /bin/bash .command.stub
-                ) >"\$COUT" 2>"\$CERR" &
+                ) >\$cout 2>\$cerr &
                 pid=\$!
                 wait \$pid || ret=\$?
                 wait \$tee1 \$tee2
