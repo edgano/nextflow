@@ -18,10 +18,8 @@
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
 package nextflow.processor
-import static nextflow.processor.ErrorStrategy.FINISH
-import static nextflow.processor.ErrorStrategy.IGNORE
-import static nextflow.processor.ErrorStrategy.RETRY
-import static nextflow.processor.ErrorStrategy.TERMINATE
+
+import static nextflow.processor.ErrorStrategy.*
 
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
@@ -62,8 +60,8 @@ import nextflow.exception.MissingFileException
 import nextflow.exception.MissingValueException
 import nextflow.exception.ProcessException
 import nextflow.exception.ProcessFailedException
-import nextflow.exception.ProcessUnrecoverableException
 import nextflow.exception.ProcessStageException
+import nextflow.exception.ProcessUnrecoverableException
 import nextflow.executor.CachedTaskHandler
 import nextflow.executor.Executor
 import nextflow.extension.DataflowHelper
@@ -92,7 +90,6 @@ import nextflow.util.ArrayBag
 import nextflow.util.BlankSeparatedList
 import nextflow.util.CacheHelper
 import nextflow.util.CollectionHelper
-import nextflow.util.Escape
 /**
  * Implement nextflow process execution logic
  *
@@ -244,6 +241,10 @@ class TaskProcessor {
     }
 
     static final public String TASK_CONTEXT_PROPERTY_NAME = 'task'
+
+    final private static Pattern ENV_VAR_NAME = ~/[a-zA-Z_]+[a-zA-Z0-9_]*/
+
+    final private static Pattern QUESTION_MARK = ~/(\?+)/
 
     /**
      * Keeps track of the task instance executed by the current thread
@@ -821,11 +822,9 @@ class TaskProcessor {
 
     final protected boolean checkCachedOrLaunchTask( TaskRun task, HashCode hash, boolean shouldTryCache ) {
 
-        int tries = 0
+        int tries = task.failCount +1
         while( true ) {
-            if( tries++ ) {
-                hash = CacheHelper.defaultHasher().newHasher().putBytes(hash.asBytes()).putInt(tries).hash()
-            }
+            hash = CacheHelper.defaultHasher().newHasher().putBytes(hash.asBytes()).putInt(tries).hash()
 
             boolean exists=false
             final folder = FileHelper.getWorkFolder(session.workDir, hash)
@@ -833,19 +832,21 @@ class TaskProcessor {
             try {
                 exists = folder.exists()
                 if( !exists && !folder.mkdirs() )
-                    throw new IOException("Unable to create folder: $folder -- check file system permission")
+                    throw new IOException("Unable to create folder=$folder -- check file system permission")
             }
             finally {
                 lockWorkDirCreation.unlock()
             }
 
-            log.trace "[${task.name}] Cacheable folder: $folder -- exists: $exists; try: $tries"
+            log.trace "[${task.name}] Cacheable folder=$folder -- exists=$exists; try=$tries; shouldTryCache=$shouldTryCache"
             def cached = shouldTryCache && exists && checkCachedOutput(task.clone(), folder, hash)
             if( cached )
                 return false
 
-            if( exists )
+            if( exists ) {
+                tries++
                 continue
+            }
 
             // submit task for execution
             submitTask( task, hash, folder )
@@ -1056,6 +1057,7 @@ class TaskProcessor {
             // -- retry without increasing the error counts
             if( task && error.cause instanceof CloudSpotTerminationException ) {
                 log.info "[$task.hashLog] NOTE: ${error.message} -- Cause: ${error.cause.message} -- Execution is retried"
+                task.failCount+=1
                 final taskCopy = task.makeCopy()
                 taskCopy.runType = RunType.RETRY
                 session.getExecService().submit { checkCachedOrLaunchTask( taskCopy, taskCopy.hash, false ) }
@@ -1151,7 +1153,6 @@ class TaskProcessor {
                     try {
                         taskCopy.config.attempt = taskErrCount+1
                         taskCopy.runType = RunType.RETRY
-                        taskCopy.error = null
                         taskCopy.resolve(taskBody)
                         checkCachedOrLaunchTask( taskCopy, taskCopy.hash, false )
                     }
@@ -1322,10 +1323,17 @@ class TaskProcessor {
      */
     @CompileStatic
     protected void publishOutputs( TaskRun task ) {
-        def publish = task.config.getPublishDir()
-        if( !publish ) {
+        final publishList = task.config.getPublishDir()
+        if( !publishList ) {
             return
         }
+
+        for( PublishDir pub : publishList ) {
+            publishOutputs0(task, pub)
+        }
+    }
+
+    private void publishOutputs0( TaskRun task, PublishDir publish ) {
 
         if( publish.overwrite == null ) {
             publish.overwrite = !task.cached
@@ -1347,7 +1355,6 @@ class TaskProcessor {
 
         publish.apply(files, task)
     }
-
 
     /**
      * Bind the expected output files to the corresponding output channels
@@ -1644,10 +1651,12 @@ class TaskProcessor {
         // pre-pend the 'bin' folder to the task environment
         if( session.binDir ) {
             if( result.containsKey('PATH') ) {
-                result['PATH'] =  "${Escape.path(session.binDir)}:${result['PATH']}".toString()
+                // note: do not escape potential blanks in the bin path because the PATH
+                // variable is enclosed in `"` when in rendered in the launcher script -- see #630
+                result['PATH'] =  "${session.binDir}:${result['PATH']}".toString()
             }
             else {
-                result['PATH'] = "${Escape.path(session.binDir)}:\$PATH".toString()
+                result['PATH'] = "${session.binDir}:\$PATH".toString()
             }
         }
 
@@ -1729,12 +1738,13 @@ class TaskProcessor {
     protected List<FileHolder> expandWildcards( String name, List<FileHolder> files ) {
         assert files != null
 
-        if( files.size()==0 ) {
-            return files
-        }
+        // use an unordered so that cache hash key is not affected by file entries order
+        final result = new ArrayBag(files.size())
+        if( files.size()==0 ) { return result }
 
         if( !name || name == '*' ) {
-            return files
+            result.addAll(files)
+            return result
         }
 
         if( !name.contains('*') && !name.contains('?') && files.size()>1 ) {
@@ -1745,9 +1755,6 @@ class TaskProcessor {
             name += '*'
         }
 
-        // use an unordered so that cache hash key is not affected by file entries order
-        final result = new ArrayBag(files.size())
-
         for( int i=0; i<files.size(); i++ ) {
             def holder = files[i]
             def newName = expandWildcards0(name, holder.stageName, i+1, files.size())
@@ -1756,8 +1763,6 @@ class TaskProcessor {
 
         return result
     }
-
-    private static Pattern QUESTION_MARK = ~/(\?+)/
 
     @CompileStatic
     protected String replaceQuestionMarkWildcards(String name, int index) {
@@ -1818,15 +1823,19 @@ class TaskProcessor {
      * exporting the required environment variables
      */
     static String bashEnvironmentScript( Map<String,String> environment, boolean escape=false ) {
+        if( !environment )
+            return null
 
-        final script = []
+        final List script = []
         environment.each { name, value ->
-            if( name ==~ /[a-zA-Z_]+[a-zA-Z0-9_]*/ ) {
+            if( !ENV_VAR_NAME.matcher(name).matches() )
+                log.trace "Illegal environment variable name: '${name}' -- This variable definition is ignored"
+            else if( !value ) {
+                log.warn "Environment variable `$name` evaluates to an empty value"
+                script << "export $name=''"
+            }
+            else
                 script << "export $name=\"${escape ? value.replace('$','\\$') : value}\""
-            }
-            else {
-                log.trace "Illegal environment variable name: '${name}'"
-            }
         }
         script << ''
 
@@ -1939,6 +1948,11 @@ class TaskProcessor {
         if( binEntries ) {
             log.trace "Task: $name > Adding scripts on project bin path: ${-> binEntries.join('; ')}"
             keys.addAll(binEntries)
+        }
+
+        final modules = task.getConfig().getModule()
+        if( modules ) {
+            keys.addAll(modules)
         }
 
         final mode = config.getHashMode()

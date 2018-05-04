@@ -113,6 +113,7 @@ class ProcessFactoryTest extends Specification {
         ProcessFactory.findNameByClass( SgeExecutor ) == 'sge'
         ProcessFactory.findNameByClass(XExecutor) == 'my_fancy_name'
     }
+
 }
 
 

@@ -45,8 +45,6 @@ import nextflow.trace.TraceFileObserver
 import nextflow.util.LoggerHelper
 import org.codehaus.groovy.control.CompilationFailedException
 import org.eclipse.jgit.api.errors.GitAPIException
-import picocli.CommandLine
-
 /**
  * Main application entry point. It parses the command line and
  * launch the pipeline execution.
@@ -96,11 +94,14 @@ class Launcher {
                 new CmdClone(),
                 new CmdCloud(),
                 new CmdFs(),
+                new CmdHistory(),
                 new CmdInfo(),
                 new CmdList(),
                 new CmdLog(),
+                new CmdLs(),
                 new CmdPull(),
                 new CmdRun(),
+                new CmdKubeRun(),
                 new CmdDrop(),
                 new CmdConfig(),
                 new CmdNode(),
@@ -121,7 +122,6 @@ class Launcher {
     /**
      * Create the Jcommander 'interpreter' and parse the command line arguments
      */
-    @Deprecated
     @PackageScope
     Launcher parseMainArgs(String... args) {
         this.cliString = System.getenv('NXF_CLI')
@@ -203,10 +203,6 @@ class Launcher {
             }
             else if( current == '-test' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << '%all'
-            }
-
-            else if( current == '-with-drmaa' && (i==args.size() || args[i].startsWith('-'))) {
-                normalized << '-'
             }
 
             else if( current == '-with-trace' && (i==args.size() || args[i].startsWith('-'))) {
@@ -366,7 +362,7 @@ class Launcher {
          * CLI argument parsing
          */
         try {
-            parsePicoMainArgs(args)
+            parseMainArgs(args)
             LoggerHelper.configureLogger(this)
         }
         catch( ParameterException e ) {
@@ -381,30 +377,6 @@ class Launcher {
             e.printStackTrace(System.err)
             System.exit(1)
         }
-        return this
-    }
-
-    Launcher parsePicoMainArgs( String[] args) {
-        this.cliString = System.getenv('NXF_CLI')
-        this.colsString = System.getenv('COLUMNS')
-
-        def top = new CommandLine(new CliOptions())
-        for( CmdBase cmd : allCommands ) {
-            top.addSubcommand( cmd.name, cmd )
-        }
-
-        def commands = top.parse(args)
-        def cmd = commands.last().getCommand()
-        if( cmd instanceof CmdBase ) {
-            cmd.launcher = this
-            command = cmd
-        }
-
-        // whether is running a daemon
-        daemonMode = command instanceof CmdNode
-        // set the log file name
-        checkLogFileName()
-
         return this
     }
 

@@ -18,33 +18,28 @@
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package nextflow.extrae
-import java.nio.file.Files
+package nextflow.config
 
-import nextflow.trace.ExtraeTraceObserver
-import spock.lang.Specification
+import groovy.transform.CompileStatic
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.PackageScope
+
 /**
+ * Placeholder class that replacing closure definitions in the nextflow configuration
+ * file in order to print the closure content itself
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-class ExtraeTraceObserverTest extends Specification {
+@EqualsAndHashCode
+@CompileStatic
+@PackageScope
+class ConfigClosurePlaceholder {
 
-    def testCopyConfig() {
+    private String str
 
-        given:
-        def testFolder = Files.createTempDirectory('test-dir')
-        def observer = [:] as ExtraeTraceObserver
-        def newFile = testFolder.resolve('config').toFile()
-
-        when:
-        observer.createConfigFile(newFile)
-        then:
-        newFile.exists()
-        newFile.text == this.getClass().getResourceAsStream("/extrae.xml").text
-
-        cleanup:
-        testFolder?.deleteDir()
-
+    ConfigClosurePlaceholder(String str) {
+        this.str = str
     }
 
+    @Override String toString() { str }
 }

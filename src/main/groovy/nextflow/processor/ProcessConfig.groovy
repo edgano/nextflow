@@ -19,10 +19,16 @@
  */
 
 package nextflow.processor
-import static nextflow.util.CacheHelper.HashMode
+
+import static nextflow.util.CacheHelper.*
+
+import java.util.regex.Pattern
 
 import groovy.transform.PackageScope
 import groovy.util.logging.Slf4j
+import nextflow.Const
+import nextflow.exception.ConfigParseException
+import nextflow.exception.IllegalConfigException
 import nextflow.exception.IllegalDirectiveException
 import nextflow.executor.BashWrapperBuilder
 import nextflow.script.BaseScript
@@ -42,7 +48,6 @@ import nextflow.script.StdInParam
 import nextflow.script.StdOutParam
 import nextflow.script.ValueInParam
 import nextflow.script.ValueOutParam
-import nextflow.util.ReadOnlyMap
 /**
  * Holds the process configuration properties
  *
@@ -51,9 +56,7 @@ import nextflow.util.ReadOnlyMap
 @Slf4j
 class ProcessConfig implements Map<String,Object> {
 
-    static final public transient BOOL_YES = ['true','yes','on']
-
-    static final public transient BOOL_NO = ['false','no','off']
+    static final public transient LABEL_REGEXP = ~/[a-zA-Z]([a-zA-Z0-9_]*[a-zA-Z0-9]+)?/
 
     static final public List<String> DIRECTIVES = [
             'afterScript',
@@ -62,6 +65,7 @@ class ProcessConfig implements Map<String,Object> {
             'cache',
             'cpus',
             'container',
+            'containerOptions',
             'cleanup',
             'clusterOptions',
             'disk',
@@ -71,6 +75,7 @@ class ProcessConfig implements Map<String,Object> {
             'ext',
             'instanceType',
             'queue',
+            'label',
             'maxErrors',
             'maxForks',
             'maxRetries',
@@ -96,63 +101,96 @@ class ProcessConfig implements Map<String,Object> {
             'stageOutMode'
     ]
 
+    /**
+     * Names of directives that can be used more than once in the process definition
+     */
+    @PackageScope
+    static final List<String> repeatableDirectives = ['label','module','publishDir']
+
+    /**
+     * Default directives values
+     */
+    @PackageScope
+    static final Map<String,Object> DEFAULT_CONFIG = [
+            echo: false,
+            cacheable: true,
+            shell: BashWrapperBuilder.BASH,
+            validExitStatus: [0],
+            maxRetries: 0,
+            maxErrors: -1,
+            errorStrategy: ErrorStrategy.TERMINATE
+    ]
+
+    /**
+     * Map instance that holds the process configuration
+     */
     @Delegate
+    @PackageScope
     protected final Map<String,Object> configProperties
 
-    private final BaseScript ownerScript
+    /**
+     * Reference to the main script object
+     */
+    private BaseScript ownerScript
 
+    /**
+     * Name of the process to which this config object is associated
+     */
+    private String processName
+
+    /**
+     * When {@code true} a {@link MissingPropertyException} is thrown when
+     * trying to access a property not existing
+     */
     private boolean throwExceptionOnMissingProperty
 
+    /**
+     * List of process input definitions
+     */
     private inputs = new InputsList()
 
+    /**
+     * List of process output definitions
+     */
     private outputs = new OutputsList()
 
     /**
      * Initialize the taskConfig object with the defaults values
      *
      * @param script The owner {@code BaseScript} configuration object
-     * @param important The values specified by this map won't be overridden by attributes
-     *      having the same name defined at the task level
      */
-    ProcessConfig( BaseScript script, Map important = null ) {
-
+    ProcessConfig( BaseScript script ) {
         ownerScript = script
-
-        // parse the attribute as List before adding it to the read-only list
-        if( important?.containsKey('module') ) {
-            important.module = parseModule(important.module)
-        }
-
-        configProperties = important ? new ReadOnlyMap(important) : new LinkedHashMap()
-        configProperties.echo = false
-        configProperties.cacheable = true
-        configProperties.shell = BashWrapperBuilder.BASH
-        configProperties.validExitStatus = [0]
-        configProperties.maxRetries = 0
-        configProperties.maxErrors = -1
-        configProperties.errorStrategy = ErrorStrategy.TERMINATE
+        configProperties = new LinkedHashMap()
+        configProperties.putAll( DEFAULT_CONFIG )
     }
 
     /* Only for testing purpose */
-    protected ProcessConfig( Map delegate ) {
+    @PackageScope
+    ProcessConfig( Map delegate ) {
         configProperties = delegate
     }
 
-    protected ProcessConfig( ProcessConfig cfg ) {
-        configProperties = cfg
-        ownerScript = cfg.@ownerScript
-        log.trace "TaskConfig >> ownerScript: $ownerScript"
-    }
-
+    /**
+     * Define the name of the process to which this config object is associated
+     *
+     * @param name String representing the name of the process to which this config object is associated
+     * @return The {@link ProcessConfig} instance itself
+     */
     @PackageScope
-    static boolean toBool( value )  {
-        if( value instanceof Boolean ) {
-            return value.booleanValue()
-        }
-
-        return value != null && value.toString().toLowerCase() in BOOL_YES
+    ProcessConfig setProcessName( String name ) {
+        this.processName = name
+        return this
     }
 
+
+    /**
+     * Enable special behavior to allow the configuration object
+     * invoking directive method from the process DSL
+     *
+     * @param value {@code true} enable capture mode, {@code false} otherwise
+     * @return The object itself
+     */
     @PackageScope
     ProcessConfig throwExceptionOnMissingProperty( boolean value ) {
         this.throwExceptionOnMissingProperty = value
@@ -185,7 +223,8 @@ class ProcessConfig implements Map<String,Object> {
          */
         if( configProperties.get(name) instanceof Closure )
             configProperties.remove(name)
-        super.invokeMethod(name, args)
+
+        this.metaClass.invokeMethod(this,name,args)
     }
 
     def methodMissing( String name, def args ) {
@@ -206,7 +245,7 @@ class ProcessConfig implements Map<String,Object> {
         return this
     }
 
-    def getProperty( String name ) {
+    Object getProperty( String name ) {
 
         switch( name ) {
             case 'inputs':
@@ -235,12 +274,139 @@ class ProcessConfig implements Map<String,Object> {
 
     }
 
+    Object put( String name, Object value ) {
+
+        if( name in repeatableDirectives  ) {
+            final result = configProperties.get(name)
+            configProperties.remove(name)
+            this.metaClass.invokeMethod(this, name, value)
+            return result
+        }
+        else {
+            return configProperties.put(name,value)
+        }
+    }
+
     @PackageScope
     BaseScript getOwnerScript() { ownerScript }
 
     @PackageScope
     TaskConfig createTaskConfig() {
         new TaskConfig(configProperties)
+    }
+
+    /**
+     * Apply the settings defined in the configuration file for the given annotation label, for example:
+     *
+     * ```
+     * process {
+     *     withLabel: foo {
+     *         cpus = 1
+     *         memory = 2.gb
+     *     }
+     * }
+     * ```
+     *
+     * @param configDirectives
+     *      A map object modelling the setting defined defined by the user in the nextflow configuration file     *
+     * @param category
+     *      The type of annotation either {@code withLabel:} or {@code withName:}
+     * @param processLabel
+     *      A specific label representing the object holding the configuration setting to apply
+     */
+    @PackageScope
+    void applyConfigForLabel( Map<String,?> configDirectives, String category, String processLabel ) {
+        assert category in ['withLabel:','withName:']
+        assert processName != null
+        assert processLabel != null
+
+        for( String rule : configDirectives.keySet() ) {
+            if( !rule.startsWith(category) )
+                continue
+            def isLabel = category=='withLabel:'
+            def pattern = rule.substring(category.size()).trim()
+            final isNegated = pattern.startsWith('!')
+            if( isNegated )
+                pattern = pattern.substring(1).trim()
+            final target = isLabel ? processLabel : processName
+            final matches = Pattern.compile(pattern).matcher(target).matches() ^ isNegated
+            if( !matches )
+                continue
+
+            log.debug "Config settings `$rule` matches ${isLabel ? "label `$target` for process with name $processName" : "process $processName"}"
+            def settings = configDirectives.get(rule)
+            if( settings instanceof Map ) {
+                applyConfigSettings(settings)
+            }
+            else if( settings != null ) {
+                throw new ConfigParseException("Unknown config settings for label `$processLabel` -- settings=$settings ")
+            }
+        }
+    }
+
+    /**
+     * Apply the settings defined in the configuration file to the actual process configuration object
+     *
+     * @param settings
+     *      A map object modelling the setting defined defined by the user in the nextflow configuration file
+     */
+    @PackageScope
+    void applyConfigSettings(Map<String,?> settings) {
+        if( !settings )
+            return
+
+        for( Entry<String,?> entry: settings ) {
+            if( entry.key.startsWith('$'))
+                continue
+
+            if( entry.key.startsWith("withLabel:") || entry.key.startsWith("withName:"))
+                continue
+
+            if( !DIRECTIVES.contains(entry.key) )
+                log.warn "Unknown directive `$entry.key` for process `$processName`"
+
+            if( entry.key == 'params' ) // <-- patch issue #242
+                continue
+
+            if( entry.key == 'ext' ) {
+                if( this.getProperty('ext') instanceof Map ) {
+                    // update missing 'ext' properties found in 'process' scope
+                    def ext = this.getProperty('ext') as Map
+                    entry.value.each { String k, v -> ext[k] = v }
+                }
+                continue
+            }
+
+            this.put(entry.key,entry.value)
+        }
+    }
+
+    /**
+     * Apply the process settings defined globally in the process config scope
+     *
+     * @param processDefaults
+     *      A map object representing the setting to be applied to the process
+     *      (provided it does not already define a different value for
+     *      the same config setting).
+     *
+     */
+    @PackageScope
+    void applyConfigDefaults( Map processDefaults ) {
+        for( String key : processDefaults.keySet() ) {
+            if( key == 'params' )
+                continue
+            def value = processDefaults.get(key)
+            def current = this.getProperty(key)
+            if( key == 'ext' ) {
+                if( value instanceof Map && current instanceof Map ) {
+                    def ext = current as Map
+                    value.each { k,v -> if(!ext.containsKey(k)) ext.put(k,v) }
+                }
+            }
+            else if( current==null || current == ProcessConfig.DEFAULT_CONFIG.get(key) ) {
+                this.put( key, value )
+            }
+        }
     }
 
     /**
@@ -256,7 +422,6 @@ class ProcessConfig implements Map<String,Object> {
     OutputsList getOutputs() {
         outputs
     }
-
 
     /*
      * note: without this method definition {@link BaseScript#echo} will be invoked
@@ -321,19 +486,17 @@ class ProcessConfig implements Map<String,Object> {
         result
     }
 
-
     /**
      * Defines a special *dummy* input parameter, when no inputs are
      * provided by the user for the current task
      */
-    def void fakeInput() {
+    void fakeInput() {
         new DefaultInParam(this)
     }
 
-    def void fakeOutput() {
+    void fakeOutput() {
         new DefaultOutParam(this)
     }
-
 
     boolean isCacheable() {
         def value = configProperties.cache
@@ -343,7 +506,7 @@ class ProcessConfig implements Map<String,Object> {
         if( value instanceof Boolean )
             return value
 
-        if( value instanceof String && value in BOOL_NO )
+        if( value instanceof String && value in Const.BOOL_NO )
             return false
 
         return true
@@ -353,43 +516,154 @@ class ProcessConfig implements Map<String,Object> {
         configProperties.cache == 'deep' ? HashMode.DEEP : HashMode.STANDARD
     }
 
+    protected boolean isValidLabel(String lbl) {
+        def p = lbl.indexOf('=')
+        if( p==-1 )
+            return LABEL_REGEXP.matcher(lbl).matches()
+
+        def left = lbl.substring(0,p)
+        def right = lbl.substring(p+1)
+        return LABEL_REGEXP.matcher(left).matches() && LABEL_REGEXP.matcher(right).matches()
+    }
+
+    /**
+     * Implements the process {@code label} directive.
+     *
+     * Note this directive  can be specified (invoked) more than one time in
+     * the process context.
+     *
+     * @param lbl
+     *      The label to be attached to the process.
+     * @return
+     *      The {@link ProcessConfig} instance itself.
+     */
+    ProcessConfig label(String lbl) {
+        if( !lbl ) return this
+        // -- check that label has a valid syntax
+        if( !isValidLabel(lbl) )
+            throw new IllegalConfigException("Not a valid process label: $lbl -- Label must consist of alphanumeric characters or '_', must start with an alphabetic character and must end with an alphanumeric character")
+
+        // -- get the current label, it must be a list
+        def allLabels = (List)configProperties.get('label')
+        if( !allLabels ) {
+            allLabels = new ConfigList()
+            configProperties.put('label', allLabels)
+        }
+
+        // -- avoid duplicates
+        if( !allLabels.contains(lbl) )
+            allLabels.add(lbl)
+        return this
+    }
+
+    List<String> getLabels() {
+        (List<String>) configProperties.get('label') ?: Collections.emptyList()
+    }
+
+    /**
+     * Implements the process {@code module} directive.
+     *
+     * See also http://modules.sourceforge.net
+     *
+     * @param moduleName
+     *      The module name to be used to execute the process.
+     * @return
+     *      The {@link ProcessConfig} instance itself.
+     */
     ProcessConfig module( moduleName ) {
         // when no name is provided, just exit
         if( !moduleName )
             return this
 
-        def list = parseModule(moduleName, configProperties.module)
-        configProperties.put('module', list)
+        def result = (List)configProperties.module
+        if( result == null ) {
+            result = new ConfigList()
+            configProperties.put('module', result)
+        }
+
+        if( moduleName instanceof List )
+            result.addAll(moduleName)
+        else
+            result.add(moduleName)
         return this
     }
 
-    @PackageScope
-    static List parseModule( value, current = null) {
-
-        // if no modules list exist create it
-        List copy
-
-        // normalize the current value to a list
-        // note: any value that is not a list is discarded
-        if( current instanceof List )
-            copy = new ArrayList<>(current)
-        else
-            copy = []
-
-        // parse the module list
-        if( value instanceof List )
-            copy.addAll(value)
-        else if( value instanceof String && value.contains(':'))
-            for( String it : value.split(':') ) { copy.add(it) }
-        else
-            copy.add( value )
-
-        return copy
-    }
-
-    ProcessConfig errorStrategy( value ) {
-        configProperties.put('errorStrategy', value)
+    /**
+     * Implements the {@code errorStrategy} directive
+     *
+     * @see ErrorStrategy
+     *
+     * @param strategy
+     *      A string representing the error strategy to be used.
+     * @return
+     *      The {@link ProcessConfig} instance itself.
+     */
+    ProcessConfig errorStrategy( strategy ) {
+        configProperties.put('errorStrategy', strategy)
         return this
     }
 
+    /**
+     * Allow the user to specify publishDir directive as a map eg:
+     *
+     *     publishDir path:'/some/dir', mode: 'copy'
+     *
+     * @param params
+     *      A map representing the the publishDir setting
+     * @return
+     *      The {@link ProcessConfig} instance itself
+     */
+    ProcessConfig publishDir(Map params ) {
+        if( !params )
+            return this
+
+        def dirs = (List)configProperties.get('publishDir')
+        if( !dirs ) {
+            dirs = new ConfigList()
+            configProperties.put('publishDir', dirs)
+        }
+
+        dirs.add(params)
+        return this
+    }
+
+    /**
+     * Allow the user to specify publishDir directive with a path and a list of named parameters, eg:
+     *
+     *     publishDir '/some/dir', mode: 'copy'
+     *
+     * @param params
+     *      A map representing the publishDir properties
+     * @param target
+     *      The target publishDir path
+     * @return
+     *      The {@link ProcessConfig} instance itself
+     */
+    ProcessConfig publishDir(Map params, target ) {
+        params.put('path', target)
+        publishDir( params )
+    }
+
+    /**
+     * Allow the user to specify the publishDir as a string path, eg:
+     *
+     *      publishDir '/some/dir'
+     *
+     * @param target
+     *      The target publishDir path
+     * @return
+     *      The {@link ProcessConfig} instance itself
+     */
+    ProcessConfig publishDir( target ) {
+        if( target instanceof List ) {
+            for( Object item : target ) { publishDir(item) }
+        }
+        else if( target instanceof Map ) {
+            publishDir( target as Map )
+        }
+        else {
+            publishDir([path: target])
+        }
+        return this
+    }
 }

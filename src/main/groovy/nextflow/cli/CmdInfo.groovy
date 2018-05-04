@@ -30,30 +30,25 @@ import nextflow.Const
 import nextflow.exception.AbortOperationException
 import nextflow.scm.AssetManager
 import nextflow.util.MemoryUnit
-import picocli.CommandLine
-import picocli.CommandLine.Option
+
 /**
  * CLI sub-command INFO
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
 @CompileStatic
-//@Parameters(commandDescription = "Print project and system runtime information")
-@CommandLine.Command (name = "Info", description ="Print project and system runtime information")
+@Parameters(commandDescription = "Print project and system runtime information")
 class CmdInfo extends CmdBase {
 
     static final public NAME = 'info'
 
-    //@Parameter(description = 'project name')
-    @CommandLine.Parameters(description = 'Project name', arity = '0..1')
+    @Parameter(description = 'project name')
     List<String> args
 
-    //@Parameter(names='-d',description = 'Show detailed information', arity = 0)
-    @Option(names=['-d'], description = 'Show detailed information', arity = '0')
+    @Parameter(names='-d',description = 'Show detailed information', arity = 0)
     boolean detailed
 
-    //@Parameter(names='-dd', hidden = true, arity = 0)
-    @Option(names=['-dd'], description = 'Show more detailed information',hidden = true, arity = '0')
+    @Parameter(names='-dd', hidden = true, arity = 0)
     boolean moreDetailed
 
     @Override

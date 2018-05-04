@@ -103,15 +103,14 @@ class BashWrapperBuilder {
             else TMPDIR="$base" mktemp -d -t nxf.XXXXXXXXXX
             fi
         }
-
+        
         on_exit() {
           exit_status=${ret:=$?}
           printf $exit_status __EXIT_FILE__
           set +u
           [[ "$tee1" ]] && kill $tee1 2>/dev/null
           [[ "$tee2" ]] && kill $tee2 2>/dev/null
-          [[ "$COUT" ]] && rm -f "$COUT" || true
-          [[ "$CERR" ]] && rm -f "$CERR" || true
+          [[ "$ctmp" ]] && rm -rf $ctmp || true
           __EXIT_CMD__
         }
 
@@ -286,7 +285,7 @@ class BashWrapperBuilder {
         }
 
         if( scratchStr.toLowerCase() in ['ramdisk','ram-disk']) {
-            return 'NXF_SCRATCH="$(nxf_mktemp /dev/shm/)"'
+            return 'NXF_SCRATCH="$(nxf_mktemp /dev/shm)"'
         }
 
         return "NXF_SCRATCH=\"\$(set +u; nxf_mktemp $scratchStr)\""
@@ -456,17 +455,18 @@ class BashWrapperBuilder {
          */
         wrapper << '' << ENDL
         wrapper << 'set +e' << ENDL  // <-- note: use loose error checking so that ops after the script command are executed in all cases
-        wrapper << 'COUT=$PWD/.command.po; mkfifo "$COUT"' << ENDL
-        wrapper << 'CERR=$PWD/.command.pe; mkfifo "$CERR"' << ENDL
-        wrapper << 'tee '<< TaskRun.CMD_OUTFILE <<' < "$COUT" &' << ENDL
+        wrapper << 'ctmp=$(set +u; nxf_mktemp /dev/shm 2>/dev/null || nxf_mktemp $TMPDIR)' << ENDL
+        wrapper << 'cout=$ctmp/.command.out; mkfifo $cout' << ENDL
+        wrapper << 'cerr=$ctmp/.command.err; mkfifo $cerr' << ENDL
+        wrapper << 'tee '<< TaskRun.CMD_OUTFILE <<' < $cout &' << ENDL
         wrapper << 'tee1=$!' << ENDL
-        wrapper << 'tee '<< TaskRun.CMD_ERRFILE <<' < "$CERR" >&2 &' << ENDL
+        wrapper << 'tee '<< TaskRun.CMD_ERRFILE <<' < $cerr >&2 &' << ENDL
         wrapper << 'tee2=$!' << ENDL
         wrapper << '(' << ENDL
 
         wrapper << getLauncherScript(interpreter,envSnippet) << ENDL
 
-        wrapper << ') >"$COUT" 2>"$CERR" &' << ENDL
+        wrapper << ') >$cout 2>$cerr &' << ENDL
         wrapper << 'pid=$!' << ENDL
         wrapper << 'wait $pid || ret=$?' << ENDL
         wrapper << 'wait $tee1 $tee2' << ENDL
@@ -650,7 +650,7 @@ class BashWrapperBuilder {
          */
         builder.addMountForInputs(resolvedInputs)
 
-        if( !this.containerExecutable)
+        if( !this.containerExecutable )
             builder.addMount(binDir)
 
         if(this.containerMount)
@@ -662,10 +662,10 @@ class BashWrapperBuilder {
         // set the name
         builder.setName('$NXF_BOXID')
 
-        if(this.containerMemory)
+        if( this.containerMemory )
             builder.setMemory(containerMemory)
 
-        if(this.containerCpuset)
+        if( this.containerCpuset )
             builder.addRunOptions(containerCpuset)
 
         // set the environment
@@ -677,7 +677,7 @@ class BashWrapperBuilder {
             if( containerConfig.fixOwnership )
                 builder.addEnv( 'NXF_OWNER=$(id -u):$(id -g)' )
 
-            if(this.containerExecutable) {
+            if( this.containerExecutable ) {
                 // PATH variable cannot be extended in an executable container
                 // make sure to not include it to avoid to override the container PATH
                 environment.remove('PATH')
@@ -687,6 +687,10 @@ class BashWrapperBuilder {
                 // `nxf_taskenv` bash function wrapper
                 builder.addEnv( environment )
             }
+        }
+
+        if( engine=='docker' && System.getenv('NXF_DOCKER_OPTS') ) {
+            builder.addRunOptions(System.getenv('NXF_DOCKER_OPTS'))
         }
 
         // set up run docker params
@@ -705,8 +709,13 @@ class BashWrapperBuilder {
             builder.params(readOnlyInputs: true)
 
         // override the docker entry point the image is NOT defined as executable
-        if( !this.containerExecutable)
+        if( !this.containerExecutable )
             builder.params(entry: '/bin/bash')
+
+        // give a chance to override any option with process specific `containerOptions`
+        if( containerOptions ) {
+            builder.addRunOptions(containerOptions)
+        }
 
         builder.build()
         return builder

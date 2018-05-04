@@ -1,8 +1,8 @@
 .. _process-page:
 
-************
+*********
 Processes
-************
+*********
 
 In Nextflow a `process` is the basic processing `primitive` to execute a user script.
 
@@ -46,7 +46,7 @@ inputs, outputs, when clause and finally the process script. The syntax is defin
 .. _process-script:
 
 Script
-=======
+======
 
 The `script` block is a string statement that defines the command that is executed by the process to carry out its task.
 
@@ -213,7 +213,7 @@ the other branches will be executed.
 .. _process-template:
 
 Template
----------
+--------
 
 Process script can be externalised by using *template* files which can be reused across different processes and tested
 independently by the overall pipeline execution.
@@ -256,7 +256,7 @@ The template script can contain any piece of code that can be executed by the un
 .. _process-shell:
 
 Shell
---------
+-----
 
 .. warning:: This is an incubating feature. It may change in future Nextflow releases.
 
@@ -299,7 +299,7 @@ as a process input variable managed by Nextflow.
 .. _process-native:
 
 Native execution
-------------------
+----------------
 
 Nextflow processes can execute native code other than system scripts as shown in the previous paragraphs.
 
@@ -328,7 +328,7 @@ Will display::
 .. _process-input:
 
 Inputs
-=======
+======
 
 Nextflow processes are isolated from each other but can communicate between themselves sending values through channels.
 
@@ -366,7 +366,7 @@ each        Lets you execute the process for each entry in the input collection.
 
 
 Input of generic values
--------------------------
+-----------------------
 
 The ``val`` qualifier allows you to receive data of any type as input. It can be accessed in the process script
 by using the specified input name, as shown in the following example::
@@ -409,7 +409,7 @@ Thus the above example can be written as shown below::
 
 
 Input of files
------------------
+--------------
 
 The ``file`` qualifier allows you to receive a value as a file in the process execution context. This means that
 Nextflow will stage it in the process execution directory, and you can access it in the script by using the name
@@ -487,7 +487,7 @@ execution is launched.
 
 
 Multiple input files
-----------------------
+--------------------
 
 A process can declare as input file a channel that emits a collection of values, instead of a simple value.
 
@@ -498,7 +498,7 @@ usual square brackets notation.
 When a target file name is defined in the input parameter and a collection of files is received by the process,
 the file name will be appended by a numerical suffix representing its ordinal position in the list. For example::
 
-    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(count:3)
+    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(size:3)
 
     process blastThemAll {
         input:
@@ -521,19 +521,22 @@ replaced depending on the cardinality of the received input collection.
 ============ ============== ==================================================
 Cardinality   Name pattern     Staged file names
 ============ ============== ==================================================
- any         ``*``           (named as source)
+ any         ``*``           named as the source file
  1           ``file*.ext``   ``file.ext``
  1           ``file?.ext``   ``file1.ext``
  1           ``file??.ext``  ``file01.ext``
  many        ``file*.ext``   ``file1.ext``, ``file2.ext``, ``file3.ext``, ..
  many        ``file?.ext``   ``file1.ext``, ``file2.ext``, ``file3.ext``, ..
  many        ``file??.ext``  ``file01.ext``, ``file02.ext``, ``file03.ext``, ..
+ many        ``dir/*``       named as the source file, created in ``dir`` subdirectory
+ many        ``dir??/*``     named as the source file, created in a progressively indexed subdirectory e.g. ``dir01/``, ``dir02/``, etc.
+ many        ``dir*/*``      (as above)
 ============ ============== ==================================================
 
 The following fragment shows how a wildcard can be used in the input file declaration::
 
 
-    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(count:3)
+    fasta = Channel.fromPath( "/some/path/*.fa" ).buffer(size:3)
 
     process blastThemAll {
         input:
@@ -550,7 +553,7 @@ The following fragment shows how a wildcard can be used in the input file declar
   name pattern or a variable identifier.
 
 Dynamic input file names
-----------------------------
+------------------------
 
 When the input file name is specified by using the ``name`` file clause or the short `string` notation, you
 are allowed to use other input values as variables in the file name string. For example::
@@ -579,7 +582,7 @@ with the current execution context.
 
 
 Input of type 'stdin'
------------------------
+---------------------
 
 The ``stdin`` input qualifier allows you the forwarding of the value received from a channel to the
 `standard input <http://en.wikipedia.org/wiki/Standard_streams#Standard_input_.28stdin.29>`_
@@ -608,7 +611,7 @@ It will output::
 
 
 Input of type 'env'
----------------------
+-------------------
 
 The ``env`` qualifier allows you to define an environment variable in the process execution context based
 on the value received from the channel. For example::
@@ -636,7 +639,7 @@ on the value received from the channel. For example::
 
 
 Input of type 'set'
---------------------
+-------------------
 
 The ``set`` qualifier allows you to group multiple parameters in a single parameter definition. It can be useful
 when a process receives, in input, tuples of values that need to be handled separately. Each element in the tuple
@@ -693,7 +696,7 @@ File names can be defined in *dynamic* manner as explained in the `Dynamic input
 
 
 Input repeaters
-----------------
+---------------
 
 The ``each`` qualifier allows you to repeat the execution of a process for each item in a collection,
 every time a new data is received. For example::
@@ -746,7 +749,7 @@ against the same library files.
   In this regard, see the :ref:`operator-combine`, :ref:`operator-cross` and :ref:`operator-phase` operators.
 
 Outputs
-========
+=======
 
 The `output` declaration block allows to define the channels used by the process to send out the results produced.
 
@@ -1014,7 +1017,6 @@ A `set` declaration can contain any combination of the following qualifiers, pre
 .. tip:: Variable identifiers are interpreted as `values` while strings literals are interpreted as `files` by default,
   thus the above output `set` can be rewritten using a short notation as shown below.
 
-
 ::
 
     output:
@@ -1024,8 +1026,21 @@ A `set` declaration can contain any combination of the following qualifiers, pre
 
 File names can be defined in a dynamic manner as explained in the :ref:`process-dynoutname` section.
 
+Optional Output
+---------------
+
+In most cases a process is expected to generate output that is added to the output channel.  However, there are situations where it is valid for a process to `not` generate output. In these cases ``optional true`` may be added to the output declaration, which tells Nextflow not to fail the process if the declared output is not created.
+
+::
+
+    output:
+        file("output.txt") optional true into outChannel
+
+In this example, the process is normally expected to generate an ``output.txt`` file, but in the cases where the file is legitimately missing, the process does not fail. ``outChannel`` is only populated by those processes that do generate ``output.txt``. 
+
+
 When
-=======
+====
 
 The ``when`` declaration allows you to define a condition that must be verified in order to execute the process.
 This can be any expression that evaluates a boolean value.
@@ -1071,6 +1086,7 @@ The directives are:
 * `cache`_
 * `cpus`_
 * `container`_
+* `containerOptions`_
 * `clusterOptions`_
 * `disk`_
 * `echo`_
@@ -1078,6 +1094,7 @@ The directives are:
 * `executor`_
 * `ext`_
 * `queue`_
+* `label`_
 * `maxErrors`_
 * `maxForks`_
 * `maxRetries`_
@@ -1181,6 +1198,31 @@ Simply replace in the above script ``dockerbox:tag`` with the Docker image name 
 .. note:: This directive is ignore for processes :ref:`executed natively <process-native>`.
 
 
+.. _process-containerOptions:
+
+containerOptions
+----------------
+
+The ``containerOptions`` directive allows you to specify any container execution option supported by the underlying
+container engine (ie. Docker, Singularity, etc). This can be useful to provide container settings
+only for a specific process e.g. mount a custom path::
+
+
+  process runThisWithDocker {
+
+      container 'busybox:latest'
+      containerOptions '--volume /data/db:/db'
+
+      output: file 'output.txt'
+
+      '''
+      your_command --data /db > output.txt
+      '''
+  }
+
+
+.. warning:: This feature is not supported by :ref:`awsbatch-executor` and :ref:`kubernetes-executor` executors.
+
 .. _process-cpus:
 
 cpus
@@ -1210,13 +1252,13 @@ See also: `penv`_, `memory`_, `time`_, `queue`_, `maxForks`_
 clusterOptions
 --------------
 
-The ``clusterOptions`` directive allows to use any `native` configuration option accepted by your cluster submit command.
+The ``clusterOptions`` directive allows the usage of any `native` configuration option accepted by your cluster submit command.
 You can use it to request non-standard resources or use settings that are specific to your cluster and not supported
 out of the box by Nextflow.
 
 .. note:: This directive is taken in account only when using a grid based executor:
-  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor`,
-  :ref:`condor-executor` and :ref:`drmaa-executor` executors.
+  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor` and
+  :ref:`condor-executor` executors.
 
 .. _process-disk:
 
@@ -1587,6 +1629,9 @@ The ``publishDir`` directive allows you to publish the process output files to a
 The above example splits the string ``Hola`` into file chunks of a single byte. When complete the ``chunk_*`` output files
 are published into the ``/data/chunks`` folder.
 
+.. tip:: The ``publishDir`` directive can be specified more than one time in to publish the output files
+  to different target directories. This feature requires version 0.29.0 or higher.
+
 By default files are published to the target folder creating a *symbolic link* for each process output that links
 the file produced into the process working directory. This behavior can be modified using the ``mode`` parameter.
 
@@ -1615,6 +1660,7 @@ Table of publish modes:
 symlink         Creates a `symbolic link` in the published directory for each process output file (default).
 link            Creates a `hard link` in the published directory for each process output file.
 copy            Copies the output files into the published directory.
+copyNoFollow    Copies the output files into the published directory without following symlinks ie. copies the links themselves. 
 move            Moves the output files into the published directory. **Note**: this is only supposed to be used for a `terminating` process i.e. a process whose output is not consumed by any other downstream process.
 =============== =================
 
@@ -1674,7 +1720,38 @@ Multiple queues can be specified by separating their names with a comma for exam
 
 
 .. note:: This directive is taken in account only by the following executors: :ref:`sge-executor`, :ref:`lsf-executor`,
-  :ref:`slurm-executor`, :ref:`pbs-executor` and :ref:`drmaa-executor` executors.
+  :ref:`slurm-executor` and :ref:`pbs-executor` executors.
+
+
+.. _process-label:
+
+label
+-----
+
+The ``label`` directive allows the annotation of processes with mnemonic identifier of your choice.
+For example::
+
+  process bigTask {
+
+    label 'big_mem'
+
+    '''
+    <task script>
+    '''
+  }
+
+
+The same label can be applied to more than a process and multiple labels can be applied to the same
+process using the ``label`` directive more than one time.
+
+.. note:: A label must consist of alphanumeric characters or ``_``, must start with an alphabetic character
+  and must end with an alphanumeric character.
+
+Labels are useful to organise workflow processes in separate groups which can be referenced
+in the configuration file to select and configure subset of processes having similar computing requirements.
+
+See the :ref:`config-process-selectors` documentation for details.
+
 
 .. _process-scratch:
 
@@ -1876,8 +1953,8 @@ d       Days
 ======= =============
 
 .. note:: This directive is taken in account only when using one of the following grid based executors:
-  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor`,
-  :ref:`condor-executor` and :ref:`drmaa-executor` executors.
+  :ref:`sge-executor`, :ref:`lsf-executor`, :ref:`slurm-executor`, :ref:`pbs-executor` and
+  :ref:`condor-executor` executors.
 
 See also: `cpus`_, `memory`_, `queue`_ and `Dynamic computing resources`_.
 

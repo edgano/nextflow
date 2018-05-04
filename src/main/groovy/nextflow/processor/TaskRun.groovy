@@ -20,6 +20,8 @@
 
 package nextflow.processor
 
+import java.nio.file.Files
+
 import nextflow.container.ContainerHandler
 
 import java.nio.file.NoSuchFileException
@@ -184,14 +186,13 @@ class TaskRun implements Cloneable {
         // print the stdout
         if( stdout instanceof Path ) {
             try {
-                synchronized (System.out) {
-                    stdout.withReader {  reader ->
-                        reader.eachLine { System.out.println(it) }
-                    }
-                }
+                Files.copy(stdout, System.out)
             }
             catch( NoSuchFileException e ) {
                 log.trace "Echo file does not exist: ${stdout}"
+            }
+            catch( Exception e ) {
+                log.error "Unable to echo process output -- check the log file for details", e
             }
             return
         }
@@ -332,6 +333,7 @@ class TaskRun implements Cloneable {
         def copy = this.clone()
         // -- reset the error condition (if any)
         copy.id = TaskId.next()
+        copy.name = null // <-- force to re-evaluate the name that can include a dynamic tag
         copy.error = null
         copy.exitStatus = Integer.MAX_VALUE
         return copy
@@ -552,6 +554,9 @@ class TaskRun implements Cloneable {
         String imageName
         if( isContainerExecutable() ) {
             imageName = ContainerScriptTokens.parse(script.toString()).image
+        }
+        else if( !config.container ) {
+            return null
         }
         else {
             imageName = config.container as String

@@ -32,6 +32,10 @@ import static nextflow.extension.Bolts.DATETIME_FORMAT
  */
 class Const {
 
+    static final public transient BOOL_YES = ['true','yes','on']
+
+    static final public transient BOOL_NO = ['false','no','off']
+
     /**
      * The application main package name
      */
@@ -50,17 +54,17 @@ class Const {
     /**
      * The application version
      */
-    static public final String APP_VER = "0.27.1"
+    static public final String APP_VER = "0.29.0"
 
     /**
      * The app build time as linux/unix timestamp
      */
-    static public final long APP_TIMESTAMP = 1516279414811
+    static public final long APP_TIMESTAMP = 1524557352936
 
     /**
      * The app build number
      */
-    static public final int APP_BUILDNUM = 4755
+    static public final int APP_BUILDNUM = 4803
 
 
     /**

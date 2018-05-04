@@ -19,6 +19,7 @@
  */
 
 package nextflow.processor
+
 import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.executor.AwsBatchExecutor
@@ -178,12 +179,20 @@ class ProcessFactory {
     /**
      * Create a task processor
      *
-     * @param name The name of the process as defined in the script
-     * @param body The process declarations provided by the user
-     * @return The {@code Processor} instance
+     * @param name
+     *      The name of the process as defined in the script
+     * @param body
+     *      The process declarations provided by the user
+     * @param options
+     *      A map representing the named parameter specified after the process name eg:
+     *          `process foo(bar: 'x') {  }`
+     *      (not used)
+     * @return
+     *      The {@code Processor} instance
      */
     TaskProcessor createProcessor( String name, Closure body, Map options = null ) {
         assert body
+        assert config.process instanceof Map
 
         /*
          * check if exists 'attributes' defined in the 'process' scope for this process, e.g.
@@ -191,62 +200,47 @@ class ProcessFactory {
          * process.$name.attribute1 = xxx
          * process.$name.attribute2 = yyy
          *
+         * NOTE: THIS HAS BEEN DEPRECATED AND WILL BE REMOVED
          */
-        Map importantAttributes = null
-        if( config.process instanceof Map && config.process['$'+name] instanceof Map ) {
-            importantAttributes = (Map)config.process['$'+name]
+        Map legacySettings = null
+        if( config.process['$'+name] instanceof Map ) {
+            legacySettings = (Map)config.process['$'+name]
+            //log.warn "Process configuration syntax \$<process-name> has been deprecated -- Replace `process.\$$name = .. ` with a configuration label annotation"
         }
 
         // -- the config object
-        def processConfig = new ProcessConfig(owner, importantAttributes)
-
-        // -- set 'default' properties defined in the configuration file in the 'process' section
-        if( config.process instanceof Map ) {
-            config.process .each { String key, value ->
-                if( key.startsWith('$'))
-                    return
-                if( !ProcessConfig.DIRECTIVES.contains(key) )
-                    log.warn "Unknown directive `$key` for process `$name`"
-                if( key == 'params' ) // <-- patch issue #242
-                    return
-                if( key == 'ext' && processConfig.getProperty('ext') instanceof Map ) {
-                    // update missing 'ext' properties found in 'process' scope
-                    def ext = processConfig.getProperty('ext') as Map
-                    value.each { String k, v ->
-                        if( !ext.containsKey(k) )
-                            ext[k] = v
-                    }
-                    return
-                }
-                processConfig.put(key,value)
-            }
-        }
-
-        /*
-         * options that may be passed along the process declaration e.g.
-         *
-         * process name ( x: 1, ... ) {
-         *
-         * }
-         */
-
-        options?.each { String key, value -> processConfig.setProperty(key,value)}
+        final processConfig = new ProcessConfig(owner).setProcessName(name)
 
         // Invoke the code block which will return the script closure to the executed.
         // As side effect will set all the property declarations in the 'taskConfig' object.
-        // Note: the config object is wrapped by a TaskConfigWrapper because it is needed
-        // to raise a MissingPropertyException when some values are missing, thus the closure
-        // will try to fallback on the owner object
         processConfig.throwExceptionOnMissingProperty(true)
-        def copy = (Closure)body.clone()
-        copy.setResolveStrategy(Closure.DELEGATE_FIRST);
-        copy.setDelegate(processConfig);
-        def script = copy.call() as TaskBody
+        final copy = (Closure)body.clone()
+        copy.setResolveStrategy(Closure.DELEGATE_FIRST)
+        copy.setDelegate(processConfig)
+        final script = copy.call() as TaskBody
         processConfig.throwExceptionOnMissingProperty(false)
         if ( !script )
             throw new IllegalArgumentException("Missing script in the specified process block -- make sure it terminates with the script string to be executed")
 
-        // load the executor to be used
+        // -- Apply the directives defined in the config object using the`withLabel:` syntax
+        final processLabels = processConfig.getLabels() ?: ['']
+        for( String lbl : processLabels ) {
+            processConfig.applyConfigForLabel(config.process as Map, "withLabel:", lbl)
+        }
+
+        // -- apply setting for name
+        processConfig.applyConfigForLabel(config.process as Map, "withName:", name)
+
+        // -- Apply process specific setting defined using `process.$name` syntax
+        //    NOTE: this is deprecated and will be removed
+        if( legacySettings ) {
+            processConfig.applyConfigSettings(legacySettings)
+        }
+
+        // -- Apply defaults
+        processConfig.applyConfigDefaults( config.process as Map )
+
+        // -- load the executor to be used
         def execName = getExecutorName(processConfig) ?: DEFAULT_EXECUTOR
         def execClass = loadExecutorClass(execName)
 
@@ -257,14 +251,15 @@ class ProcessFactory {
         }
 
         def execObj = execClass.newInstance()
-        // inject the task configuration into the executor instance
+        // -- inject the task configuration into the executor instance
         execObj.session = session
         execObj.name = execName
         execObj.init()
 
-        // create processor class
+        // -- create processor class
         newTaskProcessor( name, execObj, session, owner, processConfig, script )
     }
+
 
     /**
      * Find out the 'executor' to be used in the process definition or in teh session configuration object

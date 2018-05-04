@@ -394,7 +394,7 @@ class ScriptRunnerTest extends Specification {
               module 'c/3'
 
               'echo 1'
-            }
+            }               
             '''
 
         def session = new Session(new ConfigSlurper().parse(config))
@@ -437,7 +437,7 @@ class ScriptRunnerTest extends Specification {
 
         then:
         process.config instanceof ProcessConfig
-        process.config.module == ['b/2','z/9']
+        process.config.module == ['b/2:z/9']
         process.config.createTaskConfig().module == ['b/2','z/9']
         process.config.createTaskConfig().getModule() == ['b/2','z/9']
     }
@@ -466,7 +466,7 @@ class ScriptRunnerTest extends Specification {
 
         then:
         process.config instanceof ProcessConfig
-        process.config.module == 'a/1'
+        process.config.module == ['a/1']
         process.config.createTaskConfig().module ==  ['a/1']
         process.config.createTaskConfig().getModule() ==  ['a/1']
 
@@ -602,6 +602,18 @@ class ScriptRunnerTest extends Specification {
                 '''
         then:
         new ScriptRunner(cfg(text)).fetchContainers() == ['$proc1': 'alpha', '$proc2': 'beta', default: 'gamma']
+
+
+        when:
+        text = '''
+                process.container = { "ngi/rnaseq:${workflow.getRevision() ?: 'latest'}" }
+                '''
+
+        def meta = Mock(WorkflowMetadata); meta.getRevision() >> '1.2'
+        def runner = new ScriptRunner(cfg(text))
+        runner.session.binding.setVariable('workflow',meta)
+        then:
+        runner.fetchContainers() == 'ngi/rnaseq:1.2'
     }
 
 

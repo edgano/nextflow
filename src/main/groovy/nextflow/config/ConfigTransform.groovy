@@ -17,27 +17,28 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
-apply plugin: 'groovy'
 
-sourceSets {
-    main.java.srcDirs = []
-    main.groovy.srcDirs = ['src/main']
-    main.resources.srcDirs = ['src/resources']
-    test.groovy.srcDirs = ['src/test']
-    test.java.srcDirs = []
-    test.resources.srcDirs = []
+package nextflow.config
+
+import java.lang.annotation.ElementType
+import java.lang.annotation.Retention
+import java.lang.annotation.RetentionPolicy
+import java.lang.annotation.Target
+
+import org.codehaus.groovy.transform.GroovyASTTransformationClass
+/**
+ * Nextflow configuration file AST xform marker interface
+ *
+ * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
+ */
+@Retention(RetentionPolicy.SOURCE)
+@Target(ElementType.METHOD)
+@GroovyASTTransformationClass(classes = [ConfigTransformImpl])
+@interface ConfigTransform {
+    /**
+     * hack to pass a parameter in the {@link ConfigTransformImpl} class -- do not remove
+     *
+     * See {@link ConfigTransformImpl#renderClosureAsString}
+     */
+    boolean renderClosureAsString()
 }
-
-dependencies {
-    // compile deps
-    compile project(':')
-    compile 'us.levk:drmaa-common:1.0'
-
-    // test deps
-    //testCompile project(path: ':', configuration: 'testCompile')
-    testCompile files(project.parent.sourceSets.test.output)
-    // http://forums.gradle.org/gradle/topics/subproject-test-dependency
-    // http://stackoverflow.com/questions/29253532/how-to-include-a-dependency-to-parent-test-classes-for-a-submodule-in-a-gradle-m
-
-}
-

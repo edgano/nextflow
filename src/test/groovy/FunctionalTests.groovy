@@ -17,6 +17,8 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
+
+import nextflow.config.ConfigParser
 import nextflow.processor.TaskProcessor
 import nextflow.script.ScriptRunner
 import nextflow.util.MemoryUnit
@@ -134,6 +136,36 @@ class FunctionalTests extends Specification {
 
     }
 
+    def 'should define default ext property' () {
+
+        given:
+        def CONFIG = '''
+            process.ext.foo = 'hello'
+        '''
+        def cfg = new ConfigSlurper().parse(CONFIG)
+
+        when:
+        def script = '''
+
+            process foo {
+                script:
+                /
+                echo ciao
+                /
+            }
+
+            '''
+
+        def runner = new ScriptRunner(cfg).setScript(script)
+        runner.execute()
+        def processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.ext.foo == 'hello'
+
+    }
+
+
     def 'test merge ext properties' () {
         given:
         def configStr = '''
@@ -217,4 +249,444 @@ class FunctionalTests extends Specification {
 
     }
 
+    def 'should set config with labels' () {
+
+        given:
+        /*
+         * A config with a `memory` definition for all process
+         * and two labels `small` and `big`
+         */
+        String CONFIG = '''
+            process {
+                executor = 'nope'
+                memory = 2.GB
+                
+                withLabel: small {
+                    cpus = 2 
+                    queue = 'the-small-one'
+                }
+                
+                withLabel: big {
+                    cpus = 8 
+                    memory = 4.GB
+                    queue = 'big-partition'                
+                }
+                
+                $legacy.cpus = 3 
+                $legacy.queue = 'legacy-queue'
+            }
+            '''
+
+
+        when:
+            /*
+             * no label is specified it should only use default directives
+             */
+            String script = '''   
+
+                process foo {
+                    script:
+                    'echo hello'
+                }
+                '''
+
+            def cfg = new ConfigParser().parse(CONFIG)
+            def runner = new ScriptRunner(cfg)
+            runner.setScript(script).execute()
+            def processor = runner.scriptObj.taskProcessor
+
+        then:
+            processor instanceof TaskProcessor
+            processor.config.memory == MemoryUnit.of('2 GB')
+            processor.config.cpus == null
+            processor.config.queue == null
+
+        when:
+            /*
+             * the `small` label is applied
+             */
+            script = '''   
+
+                process foo {
+                    label 'small'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+            cfg = new ConfigParser().parse(CONFIG)
+            runner = new ScriptRunner(cfg)
+            runner.setScript(script).execute()
+            processor = runner.scriptObj.taskProcessor
+
+        then:
+            processor instanceof TaskProcessor
+            processor.config.memory == MemoryUnit.of('2 GB')
+            processor.config.cpus == 2
+            processor.config.queue == 'the-small-one'
+
+
+        when:
+            /*
+             * the directives for the `big` label are applied
+             */
+            script = '''
+                process foo {
+                    label 'big'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+            cfg = new ConfigParser().parse(CONFIG)
+            runner = new ScriptRunner(cfg)
+            runner.setScript(script).execute()
+            processor = runner.scriptObj.taskProcessor
+
+        then:
+            processor instanceof TaskProcessor
+            processor.config.cpus == 8
+            processor.config.memory == MemoryUnit.of('4 GB')
+            processor.config.queue == 'big-partition'
+
+
+        when:
+        /*
+        * the directives for the `big` label are applied
+        * moreover the directive for `bar` overrides the previous ones
+        */
+        script = '''
+                process legacy {
+                    cpus 1 
+                    queue 'one'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(CONFIG)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+
+        then:
+        processor instanceof TaskProcessor
+        processor.config.memory == MemoryUnit.of('2 GB')
+        processor.config.cpus == 3
+        processor.config.queue == 'legacy-queue'
+    }
+
+    def 'should set setting for process with name' () {
+
+
+        given:
+        /*
+         * A config with a `memory` definition for all process
+         * and two labels `small` and `big`
+         */
+        String CONFIG = '''
+            process {
+                executor = 'nope' 
+                
+                withLabel: small {
+                    cpus = 2 
+                    queue = 'the-small-one'
+                }
+                
+                withName: bar {
+                    cpus = 8 
+                    memory = 4.GB
+                    queue = 'big-partition'                
+                }
+            }
+            '''
+
+
+        when:
+        /*
+         * no label is specified it should only use default directives
+         */
+        String script = '''   
+
+                process foo {
+                    label 'small'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        def cfg = new ConfigParser().parse(CONFIG)
+        def runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        def processor = runner.scriptObj.taskProcessor
+
+        then:
+        processor instanceof TaskProcessor
+        processor.config.cpus == 2
+        processor.config.queue == 'the-small-one'
+
+
+        when:
+        /*
+         * no label is specified it should only use default directives
+         */
+        script = '''   
+
+                process bar {
+                    label 'small'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(CONFIG)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+
+        then:
+        processor instanceof TaskProcessor
+        processor.config.cpus == 8
+        processor.config.queue == 'big-partition'
+    }
+
+    def 'should set module directive' () {
+        when:
+        String config = '''
+            process {
+                executor = 'nope'
+                withLabel: 'my_env' {
+                    module = 'ncbi-blast/2.2.27:t_coffee/10.0:clustalw/2.1'
+                }
+            }
+            '''
+        String script = '''   
+                process foo {
+                    module 'mod-a/1.1:mod-b/2.2'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        def cfg = new ConfigParser().parse(config)
+        def runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        def processor = runner.scriptObj.taskProcessor
+
+        then:
+        processor instanceof TaskProcessor
+        processor.config.module == ['mod-a/1.1:mod-b/2.2']
+        processor.config.createTaskConfig().getModule() == ['mod-a/1.1','mod-b/2.2']
+
+
+        when:
+        config = '''
+            process {
+                executor = 'nope'
+                withLabel: 'my_env' {
+                    module = 'ncbi-blast/2.2.27:t_coffee/10.0:clustalw/2.1'
+                }
+            }
+            '''
+        script = '''   
+                process foo {
+                    label 'my_env'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(config)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+
+        then:
+        processor instanceof TaskProcessor
+        processor.config.module == ['ncbi-blast/2.2.27:t_coffee/10.0:clustalw/2.1']
+        processor.config.createTaskConfig().getModule() == ['ncbi-blast/2.2.27','t_coffee/10.0','clustalw/2.1']
+
+    }
+
+    def 'should set publishDir directive' () {
+        when:
+        String CONFIG = '''
+            process {
+                executor = 'nope'
+                publishDir = '/some/dir'
+            }
+            '''
+        String script = '''   
+                process foo {
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        def cfg = new ConfigParser().parse(CONFIG)
+        def runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        def processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.publishDir[0] == [path:'/some/dir']
+
+
+        when:
+        CONFIG = '''
+            process {
+                executor = 'nope'
+                publishDir = [ '/some/dir', [path:'/other/dir', mode: 'copy'] ]
+            }
+            '''
+        script = '''   
+                process foo {
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(CONFIG)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.publishDir[0] == [path:'/some/dir']
+        processor.config.publishDir[1] == [path:'/other/dir', mode: 'copy']
+
+
+        when:
+        CONFIG = '''
+            process {
+                executor = 'nope'
+            }
+            '''
+        script = '''   
+                process foo {
+                    publishDir '/data1'
+                    publishDir '/data2', mode: 'symlink'
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(CONFIG)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.publishDir[0] == [path:'/data1']
+        processor.config.publishDir[1] == [path:'/data2', mode: 'symlink']
+
+
+        when:
+        CONFIG = '''
+            process {
+                executor = 'nope'
+                publishDir = '/dir/cfg'
+            }
+            '''
+        script = '''   
+                process foo {
+                    publishDir '/dir/alpha'
+                    publishDir '/dir/bravo'  
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(CONFIG)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.publishDir[0] == [path:'/dir/alpha']
+        processor.config.publishDir[1] == [path:'/dir/bravo']
+        processor.config.publishDir.size() == 2
+
+
+
+        when:
+        CONFIG = '''
+            process {
+                executor = 'nope'
+                publishDir = '/dir/cfg'
+                withName: foo { publishDir = '/dir/omega' }
+            }
+            '''
+        script = '''   
+                process foo {
+                    publishDir '/dir/alpha'
+                    publishDir '/dir/bravo'  
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(CONFIG)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.publishDir[0] == [path:'/dir/omega']
+        processor.config.publishDir.size() == 1
+    }
+
+
+
+    def 'should set directive label' () {
+
+        when:
+        def CONFIG = '''
+            process {
+                executor = 'nope'
+                label = 'alpha'
+            }
+            '''
+        def script = '''   
+                process foo {
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        def cfg = new ConfigParser().parse(CONFIG)
+        def runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        def processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.label == [ 'alpha' ]
+
+
+        when:
+        CONFIG = '''
+            process {
+                executor = 'nope'
+                label = 'alpha'
+            }
+            '''
+        script = '''   
+                process foo {
+                    label 'bravo'
+                    label 'gamma'  
+                    script:
+                    'echo hello'
+                }
+                '''
+
+        cfg = new ConfigParser().parse(CONFIG)
+        runner = new ScriptRunner(cfg)
+        runner.setScript(script).execute()
+        processor = runner.scriptObj.taskProcessor
+        then:
+        processor instanceof TaskProcessor
+        processor.config.label.size() == 2
+        processor.config.label == [ 'bravo', 'gamma' ]
+
+    }
 }

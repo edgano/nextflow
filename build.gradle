@@ -27,6 +27,10 @@ buildscript {
     }
 }
 
+plugins {
+    id "com.vanniktech.dependency.graph.generator" version "0.2.0"
+}
+
 apply plugin: 'groovy'
 apply plugin: "jacoco"
 apply plugin: 'idea'
@@ -34,7 +38,7 @@ apply plugin: 'io.codearte.nexus-staging'   // See https://github.com/Codearte/g
 
 // Add ability to test with upcoming versions of Groovy
 def groovyVer = System.getenv('CI_GROOVY_VERSION')
-if (groovyVer?.endsWith('-SNAPSHOT')) {
+if (groovyVer) {
     logger.lifecycle "Overriden Groovy dependency to use $groovyVer"
     allprojects {
         repositories {
@@ -62,12 +66,17 @@ ext {
 
 allprojects {
     apply plugin: 'java'
+    apply plugin: 'idea'
 
-    version = '0.28.0-SNAPSHOT'
+    version = '0.29.0'
     group = 'io.nextflow'
 
     sourceCompatibility = 1.8
     targetCompatibility = 1.8
+
+    idea {
+        module.inheritOutputDirs = true
+    }
 
     repositories {
         jcenter()
@@ -117,7 +126,6 @@ allprojects {
 configurations {
     capsule
     //provided
-    drmaa.extendsFrom runtime
     ignite.extendsFrom runtime
     console.extendsFrom runtime
     gdocLibs.extendsFrom runtime
@@ -127,10 +135,10 @@ configurations {
 dependencies {
     compile(project(':nxf-commons'))
     compile(project(':nxf-httpfs'))
-    compile "org.codehaus.groovy:groovy:2.4.13"
-    compile "org.codehaus.groovy:groovy-nio:2.4.13"
-    compile "org.codehaus.groovy:groovy-json:2.4.13"
-    compile "org.codehaus.groovy:groovy-templates:2.4.13"
+    compile "org.codehaus.groovy:groovy:2.4.15"
+    compile "org.codehaus.groovy:groovy-nio:2.4.15"
+    compile "org.codehaus.groovy:groovy-json:2.4.15"
+    compile "org.codehaus.groovy:groovy-templates:2.4.15"
     compile "org.slf4j:jcl-over-slf4j:1.7.21"
     compile "org.slf4j:jul-to-slf4j:1.7.21"
     compile "org.slf4j:log4j-over-slf4j:1.7.21"
@@ -140,11 +148,10 @@ dependencies {
     compile("ch.grengine:grengine:1.2.1") { exclude group: 'org.codehaus.groovy', module: 'groovy-all' }
     compile "commons-lang:commons-lang:2.6"
     compile "com.beust:jcommander:1.35"
-    compile('info.picocli:picocli:2.2.1')
     compile("com.esotericsoftware.kryo:kryo:2.24.0") { exclude group: 'com.esotericsoftware.minlog', module: 'minlog' }
     compile('org.iq80.leveldb:leveldb:0.7')
     compile('org.eclipse.jgit:org.eclipse.jgit:4.8.0.201706111038-r')
-    compile('io.nextflow:nxf-s3fs:1.0.2') {
+    compile('io.nextflow:nxf-s3fs:1.0.3') {
         exclude group: 'org.apache.tika', module: 'tika-core'
         exclude group: 'com.amazonaws', module: 'aws-java-sdk-s3'
     }
@@ -159,8 +166,6 @@ dependencies {
     runtime "org.apache.ivy:ivy:2.3.0"
 
     // library used to compile but not included in the final jar
-    //provided 'us.levk:drmaa-common:1.0'
-    //testCompile 'us.levk:drmaa-common:1.0'
 
     // Capsule manages the fat jar building process
     capsule(project(':my-capsule'))
@@ -173,14 +178,10 @@ dependencies {
         exclude module: 'nextflow'
     }
 
-    drmaa(project(':nxf-drmaa')) {
-        exclude module: 'nextflow'
-    }
-
     // Documentation required libraries
     gdocLibs 'org.fusesource.jansi:jansi:1.11'
-    gdocLibs "org.codehaus.groovy:groovy-groovydoc:2.4.13"
-    gdocLibs "org.codehaus.groovy:groovy-ant:2.4.13"
+    gdocLibs "org.codehaus.groovy:groovy-groovydoc:2.4.15"
+    gdocLibs "org.codehaus.groovy:groovy-ant:2.4.15"
 
 }
 
@@ -303,7 +304,6 @@ ext.deployable << project(':')
 ext.deployable << project(':nxf-commons')
 ext.deployable << project(':nxf-ignite')
 ext.deployable << project(':nxf-console')
-ext.deployable << project(':nxf-drmaa')
 ext.deployable << project(':nxf-httpfs')
 
 protected error(String message) {
@@ -385,12 +385,6 @@ task packOne(type: Jar) {
     deps = resolveDeps('ignite')
     manifest.attributes('Dependencies': deps, 'ignite')
 
-    /*
-     * `drmaa` dependencies
-     */
-    deps = resolveDeps('drmaa')
-    manifest.attributes('Dependencies': deps, 'drmaa')
-
     doLast {
         ant.copy(file: "$buildDir/libs/nextflow-${version}-one.jar", todir: releaseDir, overwrite: true)
         ant.copy(file: "$buildDir/libs/nextflow-${version}-one.jar", todir: nextflowDir, overwrite: true)
@@ -458,7 +452,7 @@ task deploy( type: Exec, dependsOn: [clean, pack, deployable.uploadArchives, mak
         files << file('nextflow.sha1').absoluteFile
         files << file('nextflow.sha256').absoluteFile
         files << file('nextflow.md5').absoluteFile
-        
+
         println "Uploading artifacts: "
         files.each { println "- $it"}
 
@@ -478,21 +472,25 @@ task installLauncher(type: Copy, dependsOn: ['pack']) {
     into "$homeDir/.nextflow/framework/$version/"
 }
 
+/*
+ * build, tag and publish a and new docker packaged nextflow release
+ */
 task dockerImage(type: Exec) {
 
     def temp = File.createTempFile('upload',null)
     temp.deleteOnExit()
     temp.text =  """\
     cd docker
-    docker build -t nextflow/nextflow:$version .
-    docker tag nextflow/nextflow:$version nextflow/nextflow:latest
-    docker push nextflow/nextflow:$version
-    docker push nextflow/nextflow:latest
+    make release version=$version
     """.stripIndent()
 
     commandLine 'bash', '-e', temp.absolutePath
 }
 
+/*
+ * Build a docker container image with the current snapshot
+ * DO NOT CALL IT DIRECTLY! Use the `make dockerPack` command instead
+ */
 task dockerPack(type: Exec, dependsOn: ['pack']) {
 
     def source = new File("$releaseDir/nextflow-$version-one.jar")
@@ -506,8 +504,14 @@ task dockerPack(type: Exec, dependsOn: ['pack']) {
     RUN apk update && apk add bash && apk add coreutils && apk add curl
     COPY .nextflow /.nextflow
     COPY nextflow /usr/local/bin/nextflow
+    COPY entry.sh /usr/local/bin/entry.sh
+    COPY dist/docker /usr/local/bin/docker
     ENV NXF_HOME=/.nextflow
     ENV NXF_OPTS='-XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap'
+    RUN touch /.nextflow/dockerized && rm -rf /.nextflow/launch-classpath
+    RUN chmod +x /usr/local/bin/nextflow /usr/local/bin/entry.sh
+    RUN nextflow info
+    ENTRYPOINT ["/usr/local/bin/entry.sh"]
     """
 
     def temp = File.createTempFile('upload',null)
@@ -516,8 +520,10 @@ task dockerPack(type: Exec, dependsOn: ['pack']) {
     mkdir -p $target
     cp $source $target
     cp nextflow $buildDir/docker
-    cd $buildDir/docker
-    chmod +x nextflow
+    cp docker/entry.sh $buildDir/docker
+    cd $buildDir/docker  
+    mkdir -p dist
+    curl -fsSLO https://get.docker.com/builds/Linux/x86_64/docker-17.03.1-ce.tgz && tar --strip-components=1 -xvzf docker-17.03.1-ce.tgz -C dist
     NXF_HOME=\$PWD/.nextflow nextflow info
     docker build -t nextflow/nextflow:$version .
     """.stripIndent()

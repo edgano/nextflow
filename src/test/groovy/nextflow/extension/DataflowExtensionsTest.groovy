@@ -529,6 +529,15 @@ class DataflowExtensionsTest extends Specification {
         then:
         channel.toList().val == []
 
+        when:
+        channel = Channel.value(1)
+        then:
+        channel.toList().val == [1]
+
+        when:
+        channel = Channel.value().close()
+        then:
+        channel.toList().val == []
     }
 
     def testToSortedList() {
@@ -548,6 +557,16 @@ class DataflowExtensionsTest extends Specification {
         channel = Channel.from([1,'zeta'], [2,'gamma'], [3,'alpaha'], [4,'delta'])
         then:
         channel.toSortedList { it[1] } .val == [[3,'alpaha'], [4,'delta'], [2,'gamma'], [1,'zeta'] ]
+
+        when:
+        channel = Channel.value(1)
+        then:
+        channel.toSortedList().val == [1]
+
+        when:
+        channel = Channel.value().close()
+        then:
+        channel.toSortedList().val == []
 
     }
 
@@ -853,91 +872,6 @@ class DataflowExtensionsTest extends Specification {
         Channel.create().collate(1,0)
         then:
         thrown(IllegalArgumentException)
-
-    }
-
-
-    def testBufferClose() {
-
-        when:
-        def r1 = Channel.from(1,2,3,1,2,3).buffer({ it == 2 })
-        then:
-        r1.val == [1,2]
-        r1.val == [3,1,2]
-        r1.val == Channel.STOP
-
-        when:
-        def r2 = Channel.from('a','b','c','a','b','z').buffer(~/b/)
-        then:
-        r2.val == ['a','b']
-        r2.val == ['c','a','b']
-        r2.val == Channel.STOP
-
-    }
-
-    def testBufferWithCount() {
-
-        when:
-        def r1 = Channel.from(1,2,3,1,2,3,1).buffer( size:2 )
-        then:
-        r1.val == [1,2]
-        r1.val == [3,1]
-        r1.val == [2,3]
-        r1.val == Channel.STOP
-
-        when:
-        r1 = Channel.from(1,2,3,1,2,3,1).buffer( size:2, remainder: true )
-        then:
-        r1.val == [1,2]
-        r1.val == [3,1]
-        r1.val == [2,3]
-        r1.val == [1]
-        r1.val == Channel.STOP
-
-
-        when:
-        def r2 = Channel.from(1,2,3,4,5,1,2,3,4,5,1,2,9).buffer( size:3, skip:2 )
-        then:
-        r2.val == [3,4,5]
-        r2.val == [3,4,5]
-        r2.val == Channel.STOP
-
-        when:
-        r2 = Channel.from(1,2,3,4,5,1,2,3,4,5,1,2,9).buffer( size:3, skip:2, remainder: true )
-        then:
-        r2.val == [3,4,5]
-        r2.val == [3,4,5]
-        r2.val == [9]
-        r2.val == Channel.STOP
-
-    }
-
-    def testBufferInvalidArg() {
-
-        when:
-        Channel.create().buffer( xxx: true )
-
-        then:
-        IllegalArgumentException e = thrown()
-
-    }
-
-
-    def testBufferOpenClose() {
-
-        when:
-        def r1 = Channel.from(1,2,3,4,5,1,2,3,4,5,1,2).buffer( 2, 4 )
-        then:
-        r1.val == [2,3,4]
-        r1.val == [2,3,4]
-        r1.val == Channel.STOP
-
-        when:
-        def r2 = Channel.from('a','b','c','a','b','z').buffer(~/a/,~/b/)
-        then:
-        r2.val == ['a','b']
-        r2.val == ['a','b']
-        r2.val == Channel.STOP
 
     }
 

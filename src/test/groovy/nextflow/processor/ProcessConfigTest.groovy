@@ -260,23 +260,26 @@ class ProcessConfigTest extends Specification {
     def 'should create PublishDir object' () {
 
         setup:
-        def script = Mock(BaseScript)
-        def config = new ProcessConfig(script)
+        BaseScript script = Mock(BaseScript)
+        ProcessConfig config
 
         when:
+        config = new ProcessConfig(script)
         config.publishDir '/data'
         then:
-        config.get('publishDir') == '/data'
+        config.get('publishDir')[0] == [path:'/data']
 
         when:
+        config = new ProcessConfig(script)
         config.publishDir '/data', mode: 'link', pattern: '*.bam'
         then:
-        config.get('publishDir') == [[mode: 'link', pattern: '*.bam'], '/data']
+        config.get('publishDir')[0] == [path: '/data', mode: 'link', pattern: '*.bam']
 
         when:
+        config = new ProcessConfig(script)
         config.publishDir path: '/data', mode: 'link', pattern: '*.bam'
         then:
-        config.get('publishDir') == [path: '/data', mode: 'link', pattern: '*.bam']
+        config.get('publishDir')[0] == [path: '/data', mode: 'link', pattern: '*.bam']
     }
 
     def 'should throw InvalidDirectiveException'() {
@@ -298,6 +301,155 @@ class ProcessConfigTest extends Specification {
                         shell
                 '''
                 .stripIndent().trim()
+    }
+
+
+    def 'should set process labels'() {
+        when:
+        def config = new ProcessConfig([:])
+        then:
+        config.getLabels() == []
+
+        when:
+        config.label('foo')
+        then:
+        config.getLabels() == ['foo']
+
+        when:
+        config.label('bar')
+        then:
+        config.getLabels() == ['foo','bar']
+    }
+
+    def 'should check a valid label' () {
+
+        expect:
+        new ProcessConfig([:]).isValidLabel(lbl) == result
+
+        where:
+        lbl         | result
+        'foo'       | true
+        'foo1'      | true
+        '1foo'      | false
+        '_foo'      | false
+        'foo1_'     | false
+        'foo_1'     | true
+        'foo-1'     | false
+        'foo.1'     | false
+        'a'         | true
+        'A'         | true
+        '1'         | false
+        '_'         | false
+        'a=b'       | true
+        'a=foo'     | true
+        'a=foo_1'   | true
+        'a=foo_'    | false
+        '_=foo'     | false
+        '=a'        | false
+        'a='        | false
+        'a=1'       | false
+
+    }
+
+    def 'should apply config setting for a process label' () {
+        given:
+        def settings = [
+                'withLabel:short'  : [ cpus: 1, time: '1h'],
+                'withLabel:!short' : [ cpus: 32, queue: 'cn-long'],
+                'withLabel:foo'    : [ cpus: 2 ],
+                'withLabel:foo|bar': [ disk: '100GB' ],
+                'withLabel:gpu.+'  : [ cpus: 4 ],
+        ]
+
+        when:
+        def process = new ProcessConfig([:]).setProcessName('any')
+        process.applyConfigForLabel(settings, 'withLabel:', 'short')
+        then:
+        process.cpus == 1
+        process.time == '1h'
+        process.size() == 2
+
+        when:
+        process = new ProcessConfig([:]).setProcessName('any')
+        process.applyConfigForLabel(settings, 'withLabel:', 'long')
+        then:
+        process.cpus == 32
+        process.queue == 'cn-long'
+        process.size() == 2
+
+        when:
+        process = new ProcessConfig([:]).setProcessName('any')
+        process.applyConfigForLabel(settings, 'withLabel:', 'foo')
+        then:
+        process.cpus == 2
+        process.disk == '100GB'
+        process.queue == 'cn-long'
+        process.size() == 3
+
+        when:
+        process = new ProcessConfig([:]).setProcessName('any')
+        process.applyConfigForLabel(settings, 'withLabel:', 'bar')
+        then:
+        process.cpus == 32
+        process.disk == '100GB'
+        process.queue == 'cn-long'
+        process.size() == 3
+
+        when:
+        process = new ProcessConfig([:]).setProcessName('any')
+        process.applyConfigForLabel(settings, 'withLabel:', 'gpu-1')
+        then:
+        process.cpus == 4
+        process.queue == 'cn-long'
+        process.size() == 2
+
+    }
+
+
+    def 'should apply config setting for a process name' () {
+        given:
+        def settings = [
+                'withName:alpha'        : [ cpus: 1, time: '1h'],
+                'withName:delta'        : [ cpus: 2 ],
+                'withName:delta|gamma'  : [ disk: '100GB' ],
+                'withName:omega.+'      : [ cpus: 4 ],
+        ]
+
+        when:
+        def process = new ProcessConfig([:]).setProcessName('xx')
+        process.applyConfigForLabel(settings, 'withName:', 'any')
+        then:
+        process.size() == 0
+
+        when:
+        process = new ProcessConfig([:]).setProcessName('alpha')
+        process.applyConfigForLabel(settings, 'withName:', 'any')
+        then:
+        process.cpus == 1
+        process.time == '1h'
+        process.size() == 2
+
+        when:
+        process =  new ProcessConfig([:]).setProcessName('delta')
+        process.applyConfigForLabel(settings, 'withName:', 'any')
+        then:
+        process.cpus == 2
+        process.disk == '100GB'
+        process.size() == 2
+
+        when:
+        process =  new ProcessConfig([:]).setProcessName('gamma')
+        process.applyConfigForLabel(settings, 'withName:', 'any')
+        then:
+        process.disk == '100GB'
+        process.size() == 1
+
+        when:
+        process = new ProcessConfig([:]).setProcessName('omega_x')
+        process.applyConfigForLabel(settings, 'withName:', 'any')
+        then:
+        process.cpus == 4
+        process.size() == 1
     }
 
 }

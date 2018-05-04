@@ -65,6 +65,12 @@ class FileHelper {
 
     static final public char[] ALPHA = ('a'..'z') as char[]
 
+    private static List<String> UNSUPPORTED_GLOB_WILDCARDS = ['http','https','ftp','ftps']
+
+    private static LinkOption[] NO_FOLLOW_LINKS = [LinkOption.NOFOLLOW_LINKS] as LinkOption[]
+
+    private static LinkOption[] FOLLOW_LINKS = [] as LinkOption[]
+
     static {
         def temp = System.getenv('NXF_TEMP')
         if( temp ) {
@@ -122,9 +128,7 @@ class FileHelper {
         randomString(len, ALPHA)
     }
 
-
-
-    def static List nameParts( String name ) {
+    static List nameParts( String name ) {
         assert name
 
         if( name.isLong() )  {
@@ -147,12 +151,12 @@ class FileHelper {
      *
      * @param file The file path to
      */
-    def static boolean empty( File file ) {
+    static boolean empty( File file ) {
         assert file
         empty(file.toPath())
     }
 
-    def static boolean empty( Path path ) {
+    static boolean empty( Path path ) {
 
         def attrs
         try {
@@ -223,6 +227,10 @@ class FileHelper {
 
     final static Path getLocalTempPath() {
         return localTempBasePath
+    }
+
+    static boolean isGlobAllowed( Path path ) {
+        return !(path.getFileSystem().provider().scheme in UNSUPPORTED_GLOB_WILDCARDS)
     }
 
     /**
@@ -820,8 +828,9 @@ class FileHelper {
     {
         FileSystemProvider provider = source.fileSystem.provider()
         if (target.fileSystem.provider().is(provider)) {
+            final linkOpts = options.contains(LinkOption.NOFOLLOW_LINKS) ? NO_FOLLOW_LINKS : FOLLOW_LINKS
             // same provider
-            if( Files.isDirectory(source) ) {
+            if( Files.isDirectory(source, linkOpts) ) {
                 CopyMoveHelper.copyDirectory(source, target, options)
             }
             else {

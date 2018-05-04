@@ -28,14 +28,11 @@ import nextflow.exception.AbortOperationException
 import nextflow.extension.FilesEx
 import nextflow.file.FileHelper
 import nextflow.file.FilePatternSplitter
-import picocli.CommandLine
-
 /**
  * Implements `fs` command
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-@CommandLine.Command(name = "Fs", description ="") //TODO description?
 class CmdFs extends CmdBase implements UsageAware {
 
     static final public NAME = 'fs'
@@ -155,8 +152,7 @@ class CmdFs extends CmdBase implements UsageAware {
     }
 
 
-    //@Parameter
-    @CommandLine.Parameters(description = "")    //TODO mandatory? description?
+    @Parameter
     List<String> args
 
     @Override

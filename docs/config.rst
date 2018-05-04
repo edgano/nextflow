@@ -119,8 +119,6 @@ Simply prefix your variable names with the ``env`` scope or surround them by cur
    }
 
 
-
-
 Scope `params`
 --------------
 
@@ -159,25 +157,94 @@ For examples::
 By using this configuration all processes in your pipeline will be executed through the SGE cluster, with the specified
 settings.
 
-It is possible to set the properties for a specific process in your pipeline by prefixing the process name with
-the symbol ``$`` and using it as special scope identifier. For example::
+.. _config-process-selectors:
 
-  process.queue = 'short'
-  process.$hello.queue = 'long'
+Process selectors
+^^^^^^^^^^^^^^^^^
 
+The ``withLabel`` selectors allow the configuration of all processes annotated with a :ref:`process-label` directive as
+shown below::
 
-The above configuration example sets the ``queue`` property to ``'short'`` as default value for all processes in your
-pipeline, but the process ``hello`` for which the ``queue`` property is set to ``'long'``.
-
-When using the curly brackets notation, the above can be written as shown below::
-
-  process {
-    queue = 'short'
-
-    $hello {
-        queue = 'long'
+    process {
+        withLabel: big_mem {
+            cpus = 16
+            memory = 64.GB
+            queue = 'long'
+        }
     }
-  }
+
+The above configuration example assigns 16 cpus, 64 Gb of memory and the ``long`` queue to all processes annotated
+with the ``big_mem`` label.
+
+
+In the same manner, the ``withName`` selector allows the configuration of a specific process in your pipeline by its name.
+For example::
+
+    process {
+        withName: hello {
+            cpus = 4
+            memory = 8.GB
+            queue = 'short'
+        }
+    }
+
+.. tip:: Either label and process names do not need to be enclosed with quote characters, provided the name
+  does include special characters (e.g. ``-``, ``!``, etc) or it's not a keyword or a built-in type identifier.
+  In case of doubt, you can enclose the label names or the process names with single or double quote characters.
+
+.. _config-selector-expressions:
+
+Selector expressions
+^^^^^^^^^^^^^^^^^^^^
+
+Both label and process name selectors allow the use of a regular expression in order to apply the same configuration
+to all processes matching the specified pattern condition. For example::
+
+    process {
+        withLabel: 'foo|bar' {
+            cpus = 2
+            memory = 4.GB
+        }
+    }
+
+The above configuration snippet sets 2 cpus and 4 GB of memory to the processes annotated with with a label ``foo``
+and ``bar``.
+
+A process selector can be negated prefixing it with the special character ``!``. For example::
+
+    process {
+        withLabel: 'foo' { cpus = 2 }
+        withLabel: '!foo' { cpus = 4 }
+        withName: '!align.*' { queue = 'long' }
+    }
+
+The above configuration snippet sets 2 cpus for the processes annotated with the ``foo`` label and 4 cpus to all processes
+*not* annotated with that label. Finally it sets the use of ``long`` queue to all process whose name does *not* start
+with ``align``.
+
+.. _config-selectors-priority:
+
+Selectors priority
+^^^^^^^^^^^^^^^^^^
+
+When mixing generic process configuration and selectors the following priority rules are applied (from lower to higher):
+
+1. Process generic configuration.
+2. Process specific directive defined in the workflow script.
+3. ``withLabel`` selector definition.
+4. ``withName`` selector definition.
+
+For example::
+
+    process {
+        cpus = 4
+        withLabel: foo { cpus = 8 }
+        withName: bar { cpus = 32 }
+    }
+
+Using the above configuration snippet, all workflow processes use 4 cpus if not otherwise specified in the workflow
+script. Moreover processes annotated with the ``foo`` label use 8 cpus. Finally the process named ``bar``
+uses 32 cpus.
 
 
 .. _config-executor:
@@ -258,6 +325,7 @@ runOptions          This attribute can be used to provide any extra command line
 registry            The registry from where Docker images are pulled. It should be only used to specify a private registry server. It should NOT include the protocol prefix i.e. ``http://``.
 fixOwnership        Fixes ownership of files created by the docker container.
 engineOptions       This attribute can be used to provide any option supported by the Docker engine i.e. ``docker [OPTIONS]``.
+mountFlags          Add the specified flags to the volume mounts e.g. `mountFlags = 'ro,Z'`
 ================== ================
 
 The above options can be used by prefixing them with the ``docker`` scope or surrounding them by curly
@@ -466,6 +534,45 @@ instanceType                Type of the virtual machine(s) to launch when new in
 spotPrice                   Price bid for spot/preemptive instances launched while auto-scaling the cluster.
 =========================== ================
 
+.. _config-k8s:
+
+Scope `k8s`
+-----------
+
+The ``k8s`` scope allows the definition of the configuration settings that control the deployment and execution of
+workflow applications in a Kubernetes cluster.
+
+The following settings are available:
+
+================== ================
+Name                Description
+================== ================
+context             Defines the Kubernetes `configuration context name <https://kubernetes.io/docs/tasks/access-application-cluster/configure-access-multiple-clusters/>`_ to use.
+namespace           Defines the Kubernetes namespace to use (default: ``default``).
+serviceAccount      Defines the Kubernetes `service account name <https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/>`_ to use.
+userDir             Defines the path where the workflow is launched and the user data is stored. This must be a path in a shared K8s persistent volume (default: ``<volume-claim-mount-path>/<user-name>``.
+workDir             Defines the path where the workflow temporary data is stored. This must be a path in a shared K8s persistent volume (default:``<user-dir>/work``).
+projectDir          Defines the path where Nextflow projects are downloaded. This must be a path in a shared K8s persistent volume (default: ``<volume-claim-mount-path>/projects``).
+volumeClaims        Configures one or more persistent volume claims in the execution environment. See below for details.
+================== ================
+
+Volume claims need to be defined as a named object specifying the ``mountPath`` as a nested object::
+
+    k8s {
+      volumeClaims = [ 'your-pvc-name': [mountPath: '/workspace'] ]
+    }
+
+An equivalent declaration using the curly brackets notation is shown below::
+
+    k8s {
+        volumeClaims {
+            'your-pvc-name' { mountPath = '/workspace' }
+        }
+    }
+
+More than one volume claims can be defined repeating the name and mount path declaration in the ``volumeClaims`` block.
+
+
 .. _config-timeline:
 
 Scope `timeline`
@@ -500,6 +607,7 @@ smtp.password       User password to connect to the mail server.
 smtp.proxy.host     Host name of an HTTP web proxy server that will be used for connections to the mail server.
 smtp.proxy.port     Port number for the HTTP web proxy server.
 smtp.*              Any SMTP configuration property supported by the Java Mail API (see link below).
+debug               When ``true`` enables Java Mail logging for debugging purpose.
 ================== ================
 
 .. note:: Nextflow relies on the `Java Mail API <https://javaee.github.io/javamail/>`_ to send email messages.
@@ -591,6 +699,12 @@ This configuration defines three different profiles: ``standard``, ``cluster`` a
 configuration strategies depending on the target runtime platform. By convention the ``standard`` profile is implicitly used
 when no other profile is specified by the user.
 
+.. tip:: Two or more configuration profiles can be specified by separating the profile names
+    with a comma character, for example::
+
+        nextflow run <your script> -profile standard,cloud
+
+The above feature requires version 0.28.x or higher. 
 
 Environment variables
 =====================
@@ -607,7 +721,6 @@ NXF_ORG                     Default `organization` prefix when looking for a hos
 NXF_GRAB                    Provides extra runtime dependencies downloaded from a Maven repository service.
 NXF_OPTS                    Provides extra options for the Java and Nextflow runtime. It must be a blank separated list of ``-Dkey[=value]`` properties.
 NXF_CLASSPATH               Allows to extend the Java runtime classpath with extra jar files or class folders.
-NXF_DRMAA                   Defines the Java DRMAA binding library to be used. It can be specified as a jar file location or a Maven coordinate.
 NXF_ASSETS                  Defined the directory where downloaded pipeline repositories are stored (default: ``$NXF_HOME/assets``)
 NXF_PID_FILE                Name of the file where the process PID is saved when Nextflow is launched in background.
 NXF_WORK                    Directory where working files are stored (usually your *scratch* directory)
@@ -615,8 +728,9 @@ NXF_TEMP                    Directory where temporary files are stored
 NXF_DEBUG                   Defines scripts debugging level: ``1`` dump task environment variables in the task log file; ``2`` enables command script execution tracing; ``3`` enables command wrapper execution tracing.
 NXF_EXECUTOR                Defines the default process executor e.g. `sge`
 NXF_SINGULARITY_CACHEDIR    Directory where remote Singularity images are stored. When using a computing cluster it must be a shared folder accessible to all computing nodes.
-JAVA_HOME                   Path location of the Java VM installation used to run Nextflow.
-JAVA_CMD                    Path location of the Java binary command used to launch  Nextflow.
+NXF_JAVA_HOME               Defines the path location of the Java VM installation used to run Nextflow. This variable overrides the ``JAVA_HOME`` variable if defined.
+JAVA_HOME                   Defines the path location of the Java VM installation used to run Nextflow.
+JAVA_CMD                    Defines the path location of the Java binary command used to launch Nextflow.
 HTTP_PROXY                  Defines the HTTP proxy server
 HTTPS_PROXY                 Defines the HTTPS proxy server
 =========================== ================

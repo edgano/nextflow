@@ -39,6 +39,7 @@ import nextflow.script.FileOutParam
 import nextflow.script.TaskBody
 import nextflow.script.TokenVar
 import nextflow.script.ValueInParam
+import nextflow.util.ArrayBag
 import nextflow.util.CacheHelper
 import spock.lang.Specification
 import spock.lang.Unroll
@@ -117,7 +118,6 @@ class TaskProcessorTest extends Specification {
         def processor = new DummyProcessor('task1', session, Mock(BaseScript), Mock(ProcessConfig))
         def builder = new ProcessBuilder()
         builder.environment().putAll( processor.getProcessEnvironment() )
-
         then:
         noExceptionThrown()
         builder.environment().X == '1'
@@ -130,24 +130,11 @@ class TaskProcessorTest extends Specification {
         processor = new DummyProcessor('task1', session,  Mock(BaseScript), Mock(ProcessConfig))
         builder = new ProcessBuilder()
         builder.environment().putAll( processor.getProcessEnvironment() )
-
         then:
         noExceptionThrown()
         builder.environment().X == '1'
         builder.environment().Y == '2'
         builder.environment().PATH == "${binFolder.toString()}:/some"
-
-        when:
-        home = Files.createTempDirectory('with blank')
-        binFolder = home.resolve('bin')
-        binFolder.mkdirs()
-        session = new Session([:])
-        session.setBaseDir(home)
-        processor = new DummyProcessor('task1', session, Mock(BaseScript), Mock(ProcessConfig))
-        builder = new ProcessBuilder()
-        builder.environment().putAll( processor.getProcessEnvironment() )
-        then:
-        builder.environment().PATH == "${home.toString().replace(' ', '\\ ')}/bin:\$PATH"
 
         cleanup:
         home.deleteDir()
@@ -221,6 +208,8 @@ class TaskProcessorTest extends Specification {
         list1 = processor.expandWildcards('file*.fa', [FileHolder.get('x')])
         list2 = processor.expandWildcards('file_*.fa', [FileHolder.get('x'), FileHolder.get('y'), FileHolder.get('z')])
         then:
+        list1 instanceof ArrayBag
+        list2 instanceof ArrayBag
         list1 *. stageName == ['file.fa']
         list2 *. stageName == ['file_1.fa', 'file_2.fa', 'file_3.fa']
 
@@ -235,6 +224,9 @@ class TaskProcessorTest extends Specification {
         list2 = processor.expandWildcards('file_???.fa', p1_p4 )
         def list3 = processor.expandWildcards('file_?.fa', p1_p12 )
         then:
+        list1 instanceof ArrayBag
+        list2 instanceof ArrayBag
+        list3 instanceof ArrayBag
         list1 *. stageName == ['file1.fa']
         list2 *. stageName == ['file_001.fa', 'file_002.fa', 'file_003.fa', 'file_004.fa']
         list3 *. stageName == ['file_1.fa', 'file_2.fa', 'file_3.fa', 'file_4.fa', 'file_5.fa', 'file_6.fa', 'file_7.fa', 'file_8.fa', 'file_9.fa', 'file_10.fa', 'file_11.fa', 'file_12.fa']
@@ -243,6 +235,8 @@ class TaskProcessorTest extends Specification {
         list1 = processor.expandWildcards('*', [FileHolder.get('a')])
         list2 = processor.expandWildcards('*', [FileHolder.get('x'), FileHolder.get('y'), FileHolder.get('z')])
         then:
+        list1 instanceof ArrayBag
+        list2 instanceof ArrayBag
         list1 *. stageName == ['a']
         list2 *. stageName == ['x','y','z']
 
@@ -250,6 +244,8 @@ class TaskProcessorTest extends Specification {
         list1 = processor.expandWildcards('dir1/*', [FileHolder.get('a')])
         list2 = processor.expandWildcards('dir2/*', [FileHolder.get('x'), FileHolder.get('y'), FileHolder.get('z')])
         then:
+        list1 instanceof ArrayBag
+        list2 instanceof ArrayBag
         list1 *. stageName == ['dir1/a']
         list2 *. stageName == ['dir2/x','dir2/y','dir2/z']
 
@@ -257,6 +253,8 @@ class TaskProcessorTest extends Specification {
         list1 = processor.expandWildcards('/dir/file*.fa', [FileHolder.get('x')])
         list2 = processor.expandWildcards('dir/file_*.fa', [FileHolder.get('x'), FileHolder.get('y'), FileHolder.get('z')])
         then:
+        list1 instanceof ArrayBag
+        list2 instanceof ArrayBag
         list1 *. stageName == ['dir/file.fa']
         list2 *. stageName == ['dir/file_1.fa', 'dir/file_2.fa', 'dir/file_3.fa']
 
@@ -743,6 +741,7 @@ class TaskProcessorTest extends Specification {
     def 'should make task unique id' () {
 
         given:
+        def config = Mock(TaskConfig)
         def task = Mock(TaskRun)
         def session = Mock(Session)
         session.getBinEntries() >> ['foo.sh': Paths.get('/some/path/foo.sh'), 'bar.sh': Paths.get('/some/path/bar.sh')]
@@ -758,6 +757,8 @@ class TaskProcessorTest extends Specification {
         1 * processor.getTaskGlobalVars(task) >> [:]
         1 * task.isContainerEnabled() >> false
         0 * task.getContainer()
+        1 * task.getConfig() >> config
+        1 * config.getModule() >> null
         uuid.toString() == '14cc05f32bc37f2d1a370871b1f5be4f'
 
         when:
@@ -768,7 +769,9 @@ class TaskProcessorTest extends Specification {
         1 * processor.getTaskGlobalVars(task) >> [:]
         1 * task.isContainerEnabled() >> true
         1 * task.getContainer() >> 'foo/bar'
-        uuid.toString() == '50608212f83b30ef91169eac359b5e64'
+        1 * task.getConfig() >> config
+        1 * config.getModule() >> ['bar/1.0']
+        uuid.toString() == 'f9595fcfaac36a9ffbeddbbdc9d8e72d'
     }
 
     def 'should export env vars' () {
@@ -792,6 +795,11 @@ class TaskProcessorTest extends Specification {
         env.charAt(16) == ':' as char
         env.charAt(17) == '\\' as char
         env.charAt(18) == '$' as char
+
+        when:
+        env = TaskProcessor.bashEnvironmentScript([FOO:null, BAR:''])
+        then:
+        env == "export FOO=''\nexport BAR=''\n"
 
     }
 

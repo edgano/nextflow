@@ -19,85 +19,68 @@
  */
 
 package nextflow.cli
+
 import com.beust.jcommander.DynamicParameter
 import com.beust.jcommander.Parameter
-import picocli.CommandLine
-
 /**
  * Main application command line options
  *
  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
  */
-@CommandLine.Command (name = "Options", description ="Print the options")
 class CliOptions {
 
     /**
      * The packages to debug
      */
-    //@Parameter(hidden = true, names='-debug')
-    @CommandLine.Option(names=['--debug'],hidden = true)
+    @Parameter(hidden = true, names='-debug')
     List<String> debug
 
-    //@Parameter(names=['-log'], description = 'Set nextflow log file path')
-    @CommandLine.Option(names=['--log'], description = 'Set nextflow log file path')
+    @Parameter(names=['-log'], description = 'Set nextflow log file path')
     String logFile
 
-    //@Parameter(names=['-c','-config'], description = 'Add the specified file to configuration set')
-    @CommandLine.Option(names=['-c','--config'], description = 'Add the specified file to configuration set')
+    @Parameter(names=['-c','-config'], description = 'Add the specified file to configuration set')
     List<String> userConfig
 
-    //@Parameter(names=['-C'], description = 'Use the specified configuration file(s) overriding any defaults')
-    @CommandLine.Option(names=['-C'], description = 'Use the specified configuration file(s) overriding any defaults')
+    @Parameter(names=['-C'], description = 'Use the specified configuration file(s) overriding any defaults')
     List<String> config
 
     /**
      * the packages to trace
      */
-    //@Parameter(names='-trace', hidden = true)
-    @CommandLine.Option(names=['--trace'], hidden = true)
+    @Parameter(names='-trace', hidden = true)
     List<String> trace
 
     /**
      * Enable syslog appender
      */
-    //@Parameter(names = ['-syslog'], description = 'Send logs to syslog server (eg. localhost:514)' )
-    @CommandLine.Option(names=['--syslog'], description = 'Send logs to syslog server (eg. localhost:514)' )
+    @Parameter(names = ['-syslog'], description = 'Send logs to syslog server (eg. localhost:514)' )
     String syslog
 
     /**
      * Print out the version number and exit
      */
-    //@Parameter(names = ['-v','-version'], description = 'Print the program version')
-    @CommandLine.Option(names=['-v','--version'], versionHelp = true, description = 'Print the program version')
-    boolean version //TODO we can use the 'versionHelp' @link http://picocli.info/#_help_options
-    //  App app = CommandLine.populateCommand(new App(), args);
-    //  if (app.usageHelpRequested) {
-    //    CommandLine.usage(new App(), System.err);
-    //    return;
-    //  }
-    //
+    @Parameter(names = ['-v','-version'], description = 'Print the program version')
+    boolean version
 
     /**
      * Print out the 'help' and exit
      */
-    //@Parameter(names = ['-h'], description = 'Print this help', help = true)
-    @CommandLine.Option(names=['-h','--help'], description = 'Print this help', usageHelp = true)
-    boolean help //TODO we can use the 'usageHelp' @link http://picocli.info/#_help_options
+    @Parameter(names = ['-h'], description = 'Print this help', help = true)
+    boolean help
 
-    //@Parameter(names = ['-q','-quiet'], description = 'Do not print information messages' )
-    @CommandLine.Option(names=['-q','--quite'], description = 'Do not print information messages')
+    @Parameter(names = ['-q','-quiet'], description = 'Do not print information messages' )
     boolean quiet
 
-    //@Parameter(names = ['-bg'], description = 'Execute nextflow in background', arity = 0)
-    @CommandLine.Option(names=['--bg'], description = 'Execute nextflow in background', arity='0')
+    @Parameter(names = ['-bg'], description = 'Execute nextflow in background', arity = 0)
     boolean background
 
-    //@DynamicParameter(names = ['-D'], description = 'Set JVM properties' )
-    @CommandLine.Option(names=['-D'], description = 'Set JVM properties' )
+    @DynamicParameter(names = ['-D'], description = 'Set JVM properties' )
     Map<String,String> jvmOpts = [:]
 
-    //@Parameter(names = ['-self-update'], description = 'Update nextflow to the latest version', arity = 0, hidden = true)
-    @CommandLine.Option(names=['-u','--self-update'], description = 'Update nextflow to the latest version', arity = '0', hidden = true)
+    @Parameter(names = ['-self-update'], description = 'Update nextflow to the latest version', arity = 0, hidden = true)
     boolean selfUpdate
+
+    @Parameter(names = ['-d','-dockerize'], description = 'Launch nextflow via Docker (experimental)', arity = 0)
+    boolean dockerize
 
 }
