@@ -20,6 +20,10 @@
 
 package nextflow.processor
 
+import nextflow.util.ArrayBag
+import org.apache.commons.lang.StringUtils
+import sun.nio.fs.UnixPath
+
 import static nextflow.processor.TaskStatus.*
 
 import java.nio.file.NoSuchFileException
@@ -178,9 +182,40 @@ public abstract class TaskHandler {
         record.time = task.config.getTime()?.toMillis()
         record.env = task.getEnvironmentStr()
 
+
         if( isCompleted() ) {
             record.error_action = task.errorAction?.toString()
+//**********************************************
+            //println "id: ${task.id}; name: ${task.name} IN  >> ${task.inputs.values()}\nOUT >> ${task.outputs.values()}\n"
+            def inputAux=''
+            def outputAux=''
 
+            println "id: ${task.id}; name: ${task.name} \n :-: IN :-:"
+            for(item in task.inputs.values()){
+                if (item in ArrayBag){
+                    //println "sourceObj >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("sourceObj")}"
+                    //println "storePath >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("storePath")}"
+                    //println "stageName >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("stageName")}"
+                    inputAux="${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("storePath")}; ${inputAux} "
+                }
+            }
+            inputAux =inputAux.replaceAll("; \$","") //remove last semicolon
+            record.input = inputAux
+            println "${record.input}"
+            println ":-: OUT :-: "
+
+            for(item in task.outputs.values()){
+                //println ("ITEM: ${item.getClass()} -- ${item.getProperties()}")
+                if (item in UnixPath){
+                    //println "fileName >> ${item.fileName}"
+                    outputAux="${item.fileName}; ${outputAux}"
+                }
+            }
+            outputAux =outputAux.replaceAll("; \$","") //remove last semicolon
+            record.output = outputAux
+            println "${record.output}"
+            println ":-: :-: :-:"
+//**********************************************
             if( completeTimeMillis ) {
                 // completion timestamp
                 record.complete = completeTimeMillis
