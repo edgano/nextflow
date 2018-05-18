@@ -244,7 +244,9 @@ class Launcher {
             else if( current == '-dump-channels' && (i==args.size() || args[i].startsWith('-'))) {
                 normalized << '*'
             }
-
+            else if( current == '-with-prov' && (i==args.size() || args[i].startsWith('-'))) {
+                normalized << '-'
+            }
             else if( current ==~ /^\-\-[a-zA-Z\d].*/ && !current.contains('=') ) {
                 current += '='
                 current += ( i<args.size() && isValue(args[i]) ? args[i++] : 'true' )

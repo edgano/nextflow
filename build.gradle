@@ -85,6 +85,7 @@ allprojects {
         maven { url 'http://dl.bintray.com/paolo-ditommaso/maven'}
         maven { url 'https://repo.eclipse.org/content/groups/releases' }
         maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+
     }
 
     configurations {
@@ -161,6 +162,8 @@ dependencies {
     compile ('javax.mail:mail:1.4.7')
     compile ('org.yaml:snakeyaml:1.18')
     compile ('org.jsoup:jsoup:1.11.2')
+    compile ('org.openprovenance.prov:ProvToolbox:0.7.3')
+    compile ('org.openprovenance.prov:prov-model:0.7.3')
 
     // include Ivy at runtime in order to have Grape @Grab work correctly
     runtime "org.apache.ivy:ivy:2.3.0"

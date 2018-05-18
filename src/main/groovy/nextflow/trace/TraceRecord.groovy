@@ -93,7 +93,9 @@ class TraceRecord implements Serializable {
             disk:       'mem',
             time:       'time',
             env:        'str',
-            error_action:'str'
+            error_action:'str',
+            input:      'str',
+            output:     'str'
     ]
 
     static public Map<String,Closure<String>> FORMATTER = [
@@ -248,6 +250,7 @@ class TraceRecord implements Serializable {
     }
 
     def get( String name ) {
+
         assert keySet().contains(name), "Not a valid TraceRecord field: '$name'"
         store.get(name)
     }
@@ -292,6 +295,8 @@ class TraceRecord implements Serializable {
         assert name
         def val = store.get(name)
 
+        println"you ask for $name --> value: $val"
+    println(store.toString())
         String sType=null
         String sFormat=null
         if( converter ) {
@@ -304,7 +309,7 @@ class TraceRecord implements Serializable {
                 sFormat = converter.substring(p+1)
             }
         }
-
+        println"no converters "
         def type = sType ?: FIELDS.get(name)
         if( !type )
             throw new IllegalArgumentException("Not a valid trace field name: '$name'")
@@ -315,7 +320,8 @@ class TraceRecord implements Serializable {
             throw new IllegalArgumentException("Not a valid trace formatter for field: '$name' with type: '$type'")
 
         try {
-            return formatter.call(val,sFormat)
+            println"return: $val"
+            return formatter.call(val,'str')
         }
         catch( Throwable e ) {
             log.debug "Not a valid trace value -- field: '$name'; value: '$val'; format: '$sFormat'"
@@ -326,6 +332,10 @@ class TraceRecord implements Serializable {
     TaskId getTaskId() { (TaskId)get('task_id') }
 
     String getWorkDir() { get('workdir') }
+
+    //String getInput(){get('input')}
+
+    //String getOutput(){get('output')}
 
     /**
      * Render the specified list of fields to a single string value

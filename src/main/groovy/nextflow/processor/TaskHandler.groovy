@@ -20,6 +20,10 @@
 
 package nextflow.processor
 
+import nextflow.util.ArrayBag
+
+import java.nio.file.Path
+
 import static nextflow.processor.TaskStatus.*
 
 import java.nio.file.NoSuchFileException
@@ -180,7 +184,41 @@ public abstract class TaskHandler {
 
         if( isCompleted() ) {
             record.error_action = task.errorAction?.toString()
+//**********************************************
+            //println "id: ${task.id}; name: ${task.name} IN  >> ${task.inputs.values()}\nOUT >> ${task.outputs.values()}\n"
+            def inputAux=''
+            def outputAux=''
 
+            //println "id: ${task.id}; name: ${task.name} \n :-: IN :-:"
+            for(item in task.inputs.values()){
+                //println ("IN-ITEM: ${item.getClass()} -- ${item.getProperties()}")
+                if (item instanceof ArrayBag){
+                    //println "sourceObj >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("sourceObj")}"
+                    //println "storePath >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("storePath")}"
+                    //println "stageName >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("stageName")}"
+                    inputAux="${(item.getProperty("target") as ArrayList).get(0).getAt("storePath")}; ${inputAux}"
+                }
+            }
+            inputAux =inputAux.replaceAll("; \$","") //remove last semicolon
+            record.input = inputAux
+            //println "TO FILE_in:${record.input}"
+
+            //println ":-: OUT :-: "
+            for(item in task.outputs.values()){
+                //println ("OUT-ITEM: ${item.getClass()} -- ${item.getProperties()}")
+                if (item instanceof Path){  //just one file
+                    outputAux="${item.fileName}; ${outputAux}"
+                }else if (item instanceof List){    //list of files
+                    for (element in item){
+                        outputAux="${(element as Path).fileName}; ${outputAux}"
+                    }
+                }
+            }
+            outputAux =outputAux.replaceAll("; \$","") //remove last semicolon
+            record.output = outputAux
+            //println "TO FILE_out: ${record.output}"
+            //println ":-: :-: :-:"
+//**********************************************
             if( completeTimeMillis ) {
                 // completion timestamp
                 record.complete = completeTimeMillis
