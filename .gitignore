@@ -39,3 +39,6 @@ gradle.properties
 .dockerignore
 .launch.classpath
 trace.*
+src/main/groovy/nextflow/Const.groovy
+results/
+
