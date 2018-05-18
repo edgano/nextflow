@@ -295,8 +295,8 @@ class TraceRecord implements Serializable {
         assert name
         def val = store.get(name)
 
-        println"you ask for $name --> value: $val"
-    println(store.toString())
+        //println"you ask for $name --> value: $val"
+    //println(store.toString())
         String sType=null
         String sFormat=null
         if( converter ) {
@@ -309,7 +309,7 @@ class TraceRecord implements Serializable {
                 sFormat = converter.substring(p+1)
             }
         }
-        println"no converters "
+        //println"no converters "
         def type = sType ?: FIELDS.get(name)
         if( !type )
             throw new IllegalArgumentException("Not a valid trace field name: '$name'")
@@ -320,7 +320,7 @@ class TraceRecord implements Serializable {
             throw new IllegalArgumentException("Not a valid trace formatter for field: '$name' with type: '$type'")
 
         try {
-            println"return: $val"
+            //println"return: $val"
             return formatter.call(val,'str')
         }
         catch( Throwable e ) {

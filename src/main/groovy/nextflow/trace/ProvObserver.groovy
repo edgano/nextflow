@@ -8,6 +8,7 @@ import nextflow.processor.TaskProcessor
 import  org.openprovenance.prov.model.*
 
 import java.nio.file.Path
+import java.nio.file.Paths
 
 
 /**
@@ -21,6 +22,18 @@ public class ProvObserver implements TraceObserver {
     //PROV info
     private final ProvFactory pFactory;
     private final Namespace ns;
+    public static final String PROVBOOK_PREFIX = "provbook";
+
+    //singleton
+    public ProvObserver(){
+        //this.pFactory=pFactory
+        ns=new Namespace();
+        ns.addKnownNamespaces();
+    }
+    public QualifiedName qn(String n) {
+        return ns.qualifiedName(PROVBOOK_PREFIX, n, pFactory);
+    }
+
 
     @Override
     public void onFlowStart(Session session) {
@@ -49,21 +62,36 @@ public class ProvObserver implements TraceObserver {
         //get input files
         //log.info "PROV -info-  START process > $handler"
         //log.debug "PROV - submit process > $handler"
-        println "INPUT TRACE: ${trace.getFmtStr("input")}"
-        /*def inputFile= trace.get('input')
-        for (element in inputFile){
-            def element_name = (element as Path).getFileName()
-            Entity element_name_entity = pFactory.newEntity(qn(element_name));
-            //check if it's a file
-                element_name_entity.setValue(pFactory.newValue("file",pFactory.getName().PROV_TYPE));
-                element_name_entity.setValue(pFactory.newValue("config", pFactory.getName().PROV_VALUE))
-        }*/
 
     }
 
     @Override
     public void onProcessComplete(TaskHandler handler, TraceRecord trace) {
         //get output files
+        //println "INPUT TRACE onComplete INPUT: ${trace.getFmtStr("input")}"
+        //println "INPUT TRACE onComplete OUTPUT: ${trace.getFmtStr("output")}"
+
+        def inputFiles= trace.getFmtStr("input")
+        def outputFiles=trace.getFmtStr("output")
+        List<String> inputList = Arrays.asList(inputFiles.split(";"));
+        List<String> outputList = Arrays.asList(outputFiles.split(";"));
+
+        for (element in inputList){
+            Path path = Paths.get(element);
+            def element_name = path.getFileName()
+            println "onComplete INPUT: ${element_name} \n ** PATH: ${path}"
+            
+            Entity _entity = pFactory.newEntity(qn(element_name.toString()));
+            //asume it is a file
+            _entity.setValue(pFactory.newValue("file",pFactory.getName().PROV_TYPE));
+            _entity.setValue(pFactory.newValue("${element_name}", pFactory.getName().PROV_VALUE))
+        }
+        for (element in outputList){
+            Path path = Paths.get(element);
+            def element_name = path.getFileName()
+            println "onComplete OUTPUT: ${element_name} \n ** PATH: ${path}" //use workdir as a PATH??
+        }
+
         /**
          * for each output element
          * ->

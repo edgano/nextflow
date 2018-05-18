@@ -39,3 +39,4 @@ gradle.properties
 .dockerignore
 .launch.classpath
 trace.*
+results/*
