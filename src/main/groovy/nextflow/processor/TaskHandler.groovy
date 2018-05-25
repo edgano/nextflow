@@ -21,8 +21,9 @@
 package nextflow.processor
 
 import nextflow.util.ArrayBag
-
 import java.nio.file.Path
+import org.apache.commons.lang.StringUtils
+import sun.nio.fs.UnixPath
 
 import static nextflow.processor.TaskStatus.*
 
@@ -47,9 +48,8 @@ public abstract class TaskHandler {
         this.task = task
     }
 
-
     /** Only for testing purpose */
-    protected TaskHandler() { }
+    protected TaskHandler() {}
 
     /**
      * The task managed by this handler
@@ -74,14 +74,13 @@ public abstract class TaskHandler {
 
     long completeTimeMillis
 
-
     /**
-     * Model the start transition from {@code #SUBMITTED} to {@code STARTED}
+     * Model the start transition from {@code # SUBMITTED} to {@code STARTED}
      */
     abstract boolean checkIfRunning()
 
     /**
-     *  Model the start transition from {@code #STARTED} to {@code TERMINATED}
+     *  Model the start transition from {@code # STARTED} to {@code TERMINATED}
      */
     abstract boolean checkIfCompleted()
 
@@ -102,15 +101,15 @@ public abstract class TaskHandler {
      *
      * @param status The sask status as defined by {@link TaskStatus}
      */
-    def void setStatus( TaskStatus status ) {
+    def void setStatus(TaskStatus status) {
 
         // skip if the status is the same aam
-        if ( this.status == status || status == null )
+        if (this.status == status || status == null)
             return
 
         // change the status
         this.status = status
-        switch( status ) {
+        switch (status) {
             case SUBMITTED: submitTimeMillis = System.currentTimeMillis(); break
             case RUNNING: startTimeMillis = System.currentTimeMillis(); break
             case COMPLETED: completeTimeMillis = System.currentTimeMillis(); break
@@ -124,14 +123,14 @@ public abstract class TaskHandler {
 
     boolean isRunning() { return status == RUNNING }
 
-    boolean isCompleted()  { return status == COMPLETED  }
+    boolean isCompleted() { return status == COMPLETED }
 
     protected StringBuilder toStringBuilder(StringBuilder builder) {
         builder << "id: ${task.id}; name: ${task.name}; status: $status; exit: ${task.exitStatus != Integer.MAX_VALUE ? task.exitStatus : '-'}; error: ${task.error ?: '-'}; workDir: ${task.workDir?.toUriString()}"
     }
 
     String toString() {
-        def builder = toStringBuilder( new StringBuilder() )
+        def builder = toStringBuilder(new StringBuilder())
         return "TaskHandler[${builder.toString()}]"
     }
 
@@ -140,7 +139,7 @@ public abstract class TaskHandler {
      * failed executions
      *
      * @return
-     *      Can be either:
+     * Can be either:
      *      - NEW: task has just been created and not yet submitted for execution
      *      - SUBMITTED: task has been submitted for execution
      *      - RUNNING: task is currently running
@@ -149,8 +148,8 @@ public abstract class TaskHandler {
      *      - ABORTED: task execution was aborted by NF (likely because another task forced the workflow termination)
      */
     String getStatusString() {
-        if( task.failed ) return 'FAILED'
-        if( task.aborted ) return 'ABORTED'
+        if (task.failed) return 'FAILED'
+        if (task.aborted) return 'ABORTED'
         return this.status.toString()
     }
 
@@ -182,41 +181,47 @@ public abstract class TaskHandler {
         record.time = task.config.getTime()?.toMillis()
         record.env = task.getEnvironmentStr()
 
-        if( isCompleted() ) {
+
+        if (isCompleted()) {
             record.error_action = task.errorAction?.toString()
 //**********************************************
             //println "id: ${task.id}; name: ${task.name} IN  >> ${task.inputs.values()}\nOUT >> ${task.outputs.values()}\n"
-            def inputAux=''
-            def outputAux=''
+            def inputAux = ''
+            def outputAux = ''
 
             //println "id: ${task.id}; name: ${task.name} \n :-: IN :-:"
-            for(item in task.inputs.values()){
+            for (item in task.inputs.values()) {
                 //println ("IN-ITEM: ${item.getClass()} -- ${item.getProperties()}")
-                if (item instanceof ArrayBag){
+                if (item instanceof ArrayBag) {
                     //println "sourceObj >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("sourceObj")}"
                     //println "storePath >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("storePath")}"
                     //println "stageName >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("stageName")}"
-                    inputAux="${(item.getProperty("target") as ArrayList).get(0).getAt("storePath")}; ${inputAux}"
+                    inputAux = "${(item.getProperty("target") as ArrayList).get(0).getAt("storePath")}; ${inputAux}"
+
+                    //println "id: ${task.id}; name: ${task.name}"
+
+                    inputAux = inputAux.replaceAll("; \$", "") //remove last semicolon
+                    record.input = inputAux
                 }
             }
-            inputAux =inputAux.replaceAll("; \$","") //remove last semicolon
-            record.input = inputAux
-            //println "TO FILE_in:${record.input}"
+            //println ":-: INPUT :-: "
+            //println "${record.input}"
+            //println ":-: :-: :-:"
 
-            //println ":-: OUT :-: "
-            for(item in task.outputs.values()){
+            for (item in task.outputs.values()) {
                 //println ("OUT-ITEM: ${item.getClass()} -- ${item.getProperties()}")
-                if (item instanceof Path){  //just one file
-                    outputAux="${item.fileName}; ${outputAux}"
-                }else if (item instanceof List){    //list of files
-                    for (element in item){
-                        outputAux="${(element as Path).fileName}; ${outputAux}"
+                if (item instanceof Path) {  //just one file
+                    outputAux = "${item.fileName}; ${outputAux}"
+                } else if (item instanceof List) {    //list of files
+                    for (element in item) {
+                        outputAux = "${(element as Path).fileName}; ${outputAux}"
                     }
                 }
+                outputAux = outputAux.replaceAll("; \$", "") //remove last semicolon
+                record.output = outputAux
             }
-            outputAux =outputAux.replaceAll("; \$","") //remove last semicolon
-            record.output = outputAux
-            //println "TO FILE_out: ${record.output}"
+            //println ":-: OUT :-: "
+            //println "${record.output}"
             //println ":-: :-: :-:"
 //**********************************************
             if( completeTimeMillis ) {

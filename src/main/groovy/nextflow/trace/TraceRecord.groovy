@@ -17,7 +17,6 @@
  *   You should have received a copy of the GNU General Public License
  *   along with Nextflow.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 package nextflow.trace
 import java.nio.file.Path
 
@@ -32,11 +31,11 @@ import nextflow.util.Duration
 import nextflow.util.KryoHelper
 import nextflow.util.MemoryUnit
 /**
-  * This object represent holds the information of a single process run,
-  * its content is saved to a trace file line
-  *
-  * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
-  */
+ * This object represent holds the information of a single process run,
+ * its content is saved to a trace file line
+ *
+ * @author Paolo Di Tommaso <paolo.ditommaso@gmail.com>
+ */
 @Slf4j
 @CompileStatic
 class TraceRecord implements Serializable {
@@ -140,7 +139,7 @@ class TraceRecord implements Serializable {
         if( value == null )
             return NA
 
-       if( value instanceof Duration )
+        if( value instanceof Duration )
             return String.valueOf(value.toMillis())
 
         if( value instanceof MemoryUnit )

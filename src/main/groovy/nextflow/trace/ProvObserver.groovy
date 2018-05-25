@@ -7,6 +7,7 @@ import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import  org.openprovenance.prov.model.*
 
+import javax.xml.bind.JAXBException
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -20,16 +21,17 @@ import java.nio.file.Paths
 public class ProvObserver implements TraceObserver {
 
     //PROV info
-    private final ProvFactory pFactory;
-    private final Namespace ns;
+    private final ProvFactory pFactory
+    private final Namespace ns
     public static final String PROVBOOK_PREFIX = "provbook";
 
     //singleton
-    public ProvObserver(){
+    /*public ProvObserver(){
         //this.pFactory=pFactory
         ns=new Namespace();
         ns.addKnownNamespaces();
-    }
+    }*/
+
     public QualifiedName qn(String n) {
         return ns.qualifiedName(PROVBOOK_PREFIX, n, pFactory);
     }
@@ -75,21 +77,29 @@ public class ProvObserver implements TraceObserver {
         def outputFiles=trace.getFmtStr("output")
         List<String> inputList = Arrays.asList(inputFiles.split(";"));
         List<String> outputList = Arrays.asList(outputFiles.split(";"));
+        List <Element> elementList = new ArrayList<Element>()
+
 
         for (element in inputList){
+
             Path path = Paths.get(element);
             def element_name = path.getFileName()
-            println "onComplete INPUT: ${element_name} \n ** PATH: ${path}"
-            
-            Entity _entity = pFactory.newEntity(qn(element_name.toString()));
+            //println "onComplete INPUT: ${element_name} \n ** PATH: ${path}"
+
+            Entity input_element = pFactory.newEntity(qn(element_name.toString()))
             //asume it is a file
-            _entity.setValue(pFactory.newValue("file",pFactory.getName().PROV_TYPE));
-            _entity.setValue(pFactory.newValue("${element_name}", pFactory.getName().PROV_VALUE))
+            //input_element.setValue(pFactory.newValue("file",pFactory.getName().PROV_TYPE));
+            //input_element.setValue(pFactory.newValue("${element_name}", pFactory.getName().PROV_VALUE))
         }
-        for (element in outputList){
+        /*for (element in outputList){
             Path path = Paths.get(element);
             def element_name = path.getFileName()
             println "onComplete OUTPUT: ${element_name} \n ** PATH: ${path}" //use workdir as a PATH??
+        }*/
+
+        println "INPUT ELEMENT LIST: "
+        for (element in pFactory){
+            println " ${element}.getName() -=- ${element}.getProperties()"
         }
 
         /**
