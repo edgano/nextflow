@@ -164,6 +164,8 @@ dependencies {
     compile ('org.jsoup:jsoup:1.11.2')
     compile ('org.openprovenance.prov:ProvToolbox:0.7.3')
     compile ('org.openprovenance.prov:prov-model:0.7.3')
+    compile ('org.openprovenance.prov:prov-interop:0.7.3')
+
 
     // include Ivy at runtime in order to have Grape @Grab work correctly
     runtime "org.apache.ivy:ivy:2.3.0"

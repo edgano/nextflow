@@ -185,44 +185,43 @@ public abstract class TaskHandler {
         if (isCompleted()) {
             record.error_action = task.errorAction?.toString()
 //**********************************************
-            //println "id: ${task.id}; name: ${task.name} IN  >> ${task.inputs.values()}\nOUT >> ${task.outputs.values()}\n"
+            //println "onComplete name: ${task.name} IN  >> ${task.inputs.values()}\n"
             def inputAux = ''
             def outputAux = ''
-
             //println "id: ${task.id}; name: ${task.name} \n :-: IN :-:"
             for (item in task.inputs.values()) {
-                //println ("IN-ITEM: ${item.getClass()} -- ${item.getProperties()}")
+                //println ("IN-ITEM: ${task.name}} -- ${item.getProperties()}")
                 if (item instanceof ArrayBag) {
                     //println "sourceObj >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("sourceObj")}"
                     //println "storePath >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("storePath")}"
                     //println "stageName >> ${((item as ArrayBag).getProperty("target") as ArrayList).get(0).getAt("stageName")}"
-                    inputAux = "${(item.getProperty("target") as ArrayList).get(0).getAt("storePath")}; ${inputAux}"
-
-                    //println "id: ${task.id}; name: ${task.name}"
-
+                    //println "name: ${task.name} \ntarget: ${(item.getProperty("target") as ArrayList).getAt("storePath")}\n\n"
+                    //inputAux = "${(item.getProperty("target") as ArrayList).getAt("storePath")}; ${inputAux}"
+                    for (file in item.getProperty("target")){
+                        inputAux="${file.getAt("storePath")}; ${inputAux}"
+                    }
+                    //println "**** id: ${task.name}; inputAux: ${inputAux}"
                     inputAux = inputAux.replaceAll("; \$", "") //remove last semicolon
                     record.input = inputAux
                 }
             }
-            //println ":-: INPUT :-: "
-            //println "${record.input}"
-            //println ":-: :-: :-:"
-
+            //println "### OUT-ITEM: ${task.name}}"//\n### ${task.outputs}\n*** ${task.outputs.values()}\n"
             for (item in task.outputs.values()) {
-                //println ("OUT-ITEM: ${item.getClass()} -- ${item.getProperties()}")
-                if (item instanceof Path) {  //just one file
-                    outputAux = "${item.fileName}; ${outputAux}"
-                } else if (item instanceof List) {    //list of files
-                    for (element in item) {
-                        outputAux = "${(element as Path).fileName}; ${outputAux}"
+                if(!item.getClass().toString().equals("class java.lang.String")){ //if its not a string -> string==${id}
+                    //println (" *-* OUT-Loop: ${task.name}}\n-*- ${item} -- ${item.getClass()}\n***${item.getProperties()}")
+                    if(item.getClass().toString().equals("class sun.nio.fs.UnixPath")){ //becasue it's just a SINGLE file. not a list of files
+                        //println (" *-* PATH-Loop: ${task.name}}\n-*- ${item}")
+                        outputAux="${item.toString()}; ${outputAux}"
+                    }else if(item.getClass().toString().equals("class java.util.ArrayList")) {  //in that case we have a LIST of files
+                        for (file in item){
+                            //println (" *-* FILE-Loop: ${task.name}}\n-*- ${file}")
+                            outputAux="${file.toString()}; ${outputAux}"
+                        }
                     }
                 }
                 outputAux = outputAux.replaceAll("; \$", "") //remove last semicolon
                 record.output = outputAux
             }
-            //println ":-: OUT :-: "
-            //println "${record.output}"
-            //println ":-: :-: :-:"
 //**********************************************
             if( completeTimeMillis ) {
                 // completion timestamp
