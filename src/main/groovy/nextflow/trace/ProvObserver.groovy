@@ -10,12 +10,10 @@ import org.openprovenance.prov.model.*
 import org.openprovenance.prov.interop.InteropFramework
 
 import javax.xml.datatype.DatatypeFactory
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files;
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.security.DigestInputStream
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
 
 
 /**
@@ -56,50 +54,111 @@ public class ProvObserver implements TraceObserver {
     Map<QualifiedName,Used> usedMap = new HashMap<QualifiedName,Used>();
     Map<QualifiedName,WasGeneratedBy> generatedMap = new HashMap<QualifiedName,WasGeneratedBy>();
 
+    //RO structure names
+    String roFolderName = "ro"
+    String annotationFolderName = "annotation"
+    String snapshotFolderName = "snapshot"
+    String metadataFileName = "metadata.xml"
+    String provenanceFileName = "provenance.json"
+    String commandLineFileName = "commandLine.txt"
+    String enviromentFileName = "enviroment.txt"
+    String manifestFileName = "manifest.txt"
+    String logFileName = "log.txt"
+
     @Override
     public void onFlowStart(Session session) {
         /**
+         * Create the folder structure for the ResearchObject
+         */
+        //http://mrhaki.blogspot.com/2016/05/groovy-goodness-creating-files-and.html
+        //Create the folder structure
+        final FileTreeBuilder treeBuilder = new FileTreeBuilder(new File(roFolderName))
+        treeBuilder.dir(annotationFolderName)
+        treeBuilder.dir(snapshotFolderName)
+        treeBuilder.file(metadataFileName)    // dockerSHA256 (X), software version, CommandLine, UUID, NF_version
+        treeBuilder.file(manifestFileName)      //manifestInfo(X), author(X), date(X)
+        treeBuilder.file(logFileName)           // append date+...
+        //treeBuilder.file("${annotationFolderName}/${provenanceFileName}")
+        //treeBuilder.file("${snapshotFolderName}/${commandLineFileName}")
+        //copy main.nf to /snapshot --> get RunName?
+        //treeBuilder.file("${snapshotFolderName}/${enviromentFileName}") //nextflow.config
+
+        /**
          * Get the values from the config file
          * --> author
+         * --> manifest
          * --> container
          */
-        println "**** CONFIG ****\n"+
+        /*println "**** CONFIG ****\n"+
                 "MANIFEST author: ${session.config.get("manifest").getAt("author")}\n"+
+                "MANIFEST manifest: ${session.config.get("manifest").getAt("manifest")}\n"+
                 "PROCESS containter: ${session.config.get("process").getAt("container")}\n"+
                 "DOCKER:  ${session.config.get("docker")}\n"+
                 "SINGULARITY:  ${session.config.get("singularity")}\n"+
                 "****        ****"
+         */
         /*for (Map.Entry<String, ArrayList<String>> entry : session.config.entrySet()) {
             println "KEY: ${entry.getKey()} -- VALUE: ${entry.getValue()}"
         }*/
+        boolean dockerImage
+        boolean singularityImage
+
+        //for Metadata
+        String containerName="** NOT container used **"
+        String containerSha="** NOT container used **"
+        String containerTechAux ="** NOT container used **"
+        String dockerSHAPrefix ="sha256:"
+        String singularitySHAPrefix=""
+        String commandLine=""
+        String UUID=""
+        String nextflowVersion=""
+
+        //for Manifest
+        String authorAux ="** NOT provided **"
+        String manifestAux ="** NOT provided **"
+        def today = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss").format(new Date())
+        //TODO log registry ?? --> append date
+
+        if(session.config.containsKey("manifest")&& !session.config.get("manifest").getAt("author").toString().equals("null")){
+            authorAux=session.config.get("manifest").getAt("author")
+        }
+        if(session.config.containsKey("manifest")&& !session.config.get("manifest").getAt("manifest").toString().equals("null")){
+            manifestAux=session.config.get("manifest").getAt("manifest")
+        }
+        if (session.config.containsKey("singularity")&& session.config.get("singularity").getAt("enabled").toString().equals("true")){
+            singularityImage=true
+            containerTechAux = "Singularity"
+        }else if(session.config.containsKey("docker")&& session.config.get("docker").getAt("enabled").toString().equals("true")){
+            dockerImage=true
+            containerTechAux = "Docker"
+        }
+        if(session.config.containsKey("process")&& !session.config.get("process").getAt("container").toString().equals("null")){
+            containerName=session.config.get("process").getAt("container")
+        }
+
         /**
          * Get container sha256 value
          * at SingularityCache.groovy -> runCommand
          */
-        boolean dockerImage
-        boolean singularityImage
-        String containerName="${session.config.get("process").getAt("container")}"
         String cmd =""
         String duration='10min'
 
-        if (session.config.containsKey("singularity")&& session.config.get("singularity").getAt("enabled").toString().equals("true")){
-            singularityImage=true
-            println "singularity TRUE"
-        }else if(session.config.containsKey("docker")&& session.config.get("docker").getAt("enabled").toString().equals("true")){
-            dockerImage=true
-            println "docker TRUE"
-        }
         if(dockerImage==true){  //https://stackoverflow.com/questions/32046334/where-can-i-find-the-sha256-code-of-a-docker-image
             //give a diff sha256 the .repoDigest and the Id value --> TO CHECK
             cmd ="docker inspect --format='{{index .Id}}' ${containerName}"
         }else if(singularityImage==true){
             //TODO does it work on macOX ??
             //ERROR --> DONT like it! it takes a while to digest the sha256
+            // get the value when we pull the image
+            //singularity pull --hash shub://vsoch/hello-world
+            //Progress |===================================| 100.0%
+            // Done. Container is at: /home/vanessa/ed9755a0871f04db3e14971bec56a33f.simg                      <-- file hash
+            // use RGEGISTRY (singularity global client) : sregistry inspect $IMAGE -> version
             cmd = "sha256sum ./work/singularity/cbcrg-regressive-msa-v0.2.6.img | cut -d' ' -f1" //${containerName}
         }
         if(dockerImage || singularityImage){
             final max = Duration.of(duration).toMillis()
-            println "command to run: ${cmd}"
+            //println "command to run: ${cmd}"
             final builder = new ProcessBuilder(['bash','-c',cmd])
             //builder.directory(storePath.toFile())
             //builder.environment().remove('SINGULARITY_PULLFOLDER')
@@ -111,9 +170,16 @@ public class ProvObserver implements TraceObserver {
             BufferedReader ine;
             ine = new BufferedReader(new InputStreamReader(proc.getInputStream()));
             String line;
-            print("sha256: > ")
+            //print("sha256: > ")
             while ((line = ine.readLine()) != null) {
-                System.out.println(line);
+                containerSha=line
+                // remove the prefix for the sha256 information
+                if(dockerImage){
+                    containerSha=containerSha.substring(dockerSHAPrefix.size())
+                }else{
+                    containerSha=containerSha.substring(singularitySHAPrefix.size())
+                }
+                //System.out.println(containerSha);
             }
             ine.close();
             //*******END read proc stdout
@@ -121,14 +187,29 @@ public class ProvObserver implements TraceObserver {
             proc.waitForOrKill(max)
             def status = proc.exitValue()
             if( status != 0 ) {
-                def msg = "Failed to pull singularity image\n  command: $cmd\n  status : $status\n  message:\n"
+                def msg = "Failed to get image info\n  command: $cmd\n  status : $status\n  message:\n"
                 msg += err.toString().trim().indent('    ')
                 throw new IllegalStateException(msg)
             }
-        }else{
-            println "No container to get sha256 value"
         }
 
+        /**
+         * save data into manifest.xml
+         */
+
+        File metadataFile = new File("${treeBuilder.getBaseDir()}/${metadataFileName}")
+        metadataFile.write "Container technology: ${containerTechAux}\n"
+        metadataFile << "Container name: ${containerName}\n"
+        metadataFile << "Container SHA256: ${containerSha}\n"
+        //println metaFile.text
+
+        File manifestFile = new File("${treeBuilder.getBaseDir()}/${manifestFileName}")
+        manifestFile.write "Author: ${authorAux}\n"
+        manifestFile << "Manifest: ${manifestAux}\n"
+        manifestFile << "Date: ${today}\n"
+
+        File logFile = new File("${treeBuilder.getBaseDir()}/${logFileName}")
+        logFile.append("\n${today}")
     }
 
     @Override
