@@ -5,11 +5,17 @@ import groovy.util.logging.Slf4j;
 import nextflow.Session
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
+import nextflow.util.Duration
 import org.openprovenance.prov.model.*
-import org.openprovenance.prov.interop.InteropFramework;
+import org.openprovenance.prov.interop.InteropFramework
 
+import javax.xml.datatype.DatatypeFactory
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files;
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.security.DigestInputStream
+import java.security.MessageDigest
 
 
 /**
@@ -19,10 +25,19 @@ import java.nio.file.Paths
 @Slf4j
 @CompileStatic
 public class ProvObserver implements TraceObserver {
+    enum ProvenanceType{
+        activityType, fileChecksum, fileSize, fileName
+    }
 
     //** PROV info **
     public static final String PROVBOOK_NS = "prov";
-    public static final String PROVBOOK_PREFIX = "NF";
+    public static final String PROVBOOK_PREFIX = "PROV";
+
+    private final String CHECKSUM_TYPE="SHA-256"
+    private final String provFileName="helloWorld.json"
+    private final String activity_prefix="activity_"
+    private final String used_prefix="used_"
+    private final String generatedBy_prefix="generatedBy_"
 
     private final ProvFactory pFactory= InteropFramework.newXMLProvFactory();
     private final Namespace ns;
@@ -35,24 +50,90 @@ public class ProvObserver implements TraceObserver {
         return ns.qualifiedName(PROVBOOK_PREFIX, n, pFactory);
     }
 
-    Map<QualifiedName,Entity> inputEntityMap = new HashMap<QualifiedName,Entity>();
+    Map<QualifiedName,Entity> inputEntityMap = new HashMap<QualifiedName,Entity>(); //TODO Can merge both entity maps (I guess)
     Map<QualifiedName,Entity> outputEntityMap = new HashMap<QualifiedName,Entity>();
     Map<QualifiedName,Activity> activityMap = new HashMap<QualifiedName,Activity>();
     Map<QualifiedName,Used> usedMap = new HashMap<QualifiedName,Used>();
     Map<QualifiedName,WasGeneratedBy> generatedMap = new HashMap<QualifiedName,WasGeneratedBy>();
 
-
-    //**  --  **
-
     @Override
     public void onFlowStart(Session session) {
+        /**
+         * Get the values from the config file
+         * --> author
+         * --> container
+         */
+        println "**** CONFIG ****\n"+
+                "MANIFEST author: ${session.config.get("manifest").getAt("author")}\n"+
+                "PROCESS containter: ${session.config.get("process").getAt("container")}\n"+
+                "DOCKER:  ${session.config.get("docker")}\n"+
+                "SINGULARITY:  ${session.config.get("singularity")}\n"+
+                "****        ****"
+        /*for (Map.Entry<String, ArrayList<String>> entry : session.config.entrySet()) {
+            println "KEY: ${entry.getKey()} -- VALUE: ${entry.getValue()}"
+        }*/
+        /**
+         * Get container sha256 value
+         * at SingularityCache.groovy -> runCommand
+         */
+        boolean dockerImage
+        boolean singularityImage
+        String containerName="${session.config.get("process").getAt("container")}"
+        String cmd =""
+        String duration='10min'
+
+        if (session.config.containsKey("singularity")&& session.config.get("singularity").getAt("enabled").toString().equals("true")){
+            singularityImage=true
+            println "singularity TRUE"
+        }else if(session.config.containsKey("docker")&& session.config.get("docker").getAt("enabled").toString().equals("true")){
+            dockerImage=true
+            println "docker TRUE"
+        }
+        if(dockerImage==true){  //https://stackoverflow.com/questions/32046334/where-can-i-find-the-sha256-code-of-a-docker-image
+            //give a diff sha256 the .repoDigest and the Id value --> TO CHECK
+            cmd ="docker inspect --format='{{index .Id}}' ${containerName}"
+        }else if(singularityImage==true){
+            //TODO does it work on macOX ??
+            //ERROR --> DONT like it! it takes a while to digest the sha256
+            cmd = "sha256sum ./work/singularity/cbcrg-regressive-msa-v0.2.6.img | cut -d' ' -f1" //${containerName}
+        }
+        if(dockerImage || singularityImage){
+            final max = Duration.of(duration).toMillis()
+            println "command to run: ${cmd}"
+            final builder = new ProcessBuilder(['bash','-c',cmd])
+            //builder.directory(storePath.toFile())
+            //builder.environment().remove('SINGULARITY_PULLFOLDER')
+            final proc = builder.start()
+            final err = new StringBuilder()
+            //*********START read proc stdout
+            //https://stackoverflow.com/questions/8149828/read-the-output-from-java-exec
+            builder.redirectErrorStream(true)
+            BufferedReader ine;
+            ine = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+            String line;
+            print("sha256: > ")
+            while ((line = ine.readLine()) != null) {
+                System.out.println(line);
+            }
+            ine.close();
+            //*******END read proc stdout
+            proc.consumeProcessErrorStream(err)
+            proc.waitForOrKill(max)
+            def status = proc.exitValue()
+            if( status != 0 ) {
+                def msg = "Failed to pull singularity image\n  command: $cmd\n  status : $status\n  message:\n"
+                msg += err.toString().trim().indent('    ')
+                throw new IllegalStateException(msg)
+            }
+        }else{
+            println "No container to get sha256 value"
+        }
 
     }
 
     @Override
     public void onFlowComplete() {              //when the full pipeline is DONE
         Document document = pFactory.newDocument();
-        def fileName= "helloWorld.json"
         /**
          * Print the INPUT MAP
          */
@@ -104,11 +185,11 @@ public class ProvObserver implements TraceObserver {
         /**
          * Generate the PROV document
          */
-        document.setNamespace(ns);
+        /*document.setNamespace(ns);
         //doConversion function
         InteropFramework intF=new InteropFramework();
-        intF.writeDocument(fileName, document);
-        intF.writeDocument(System.out, InteropFramework.ProvFormat.PROVN, document);
+        intF.writeDocument(provFileName, document);
+        intF.writeDocument(System.out, InteropFramework.ProvFormat.PROVN, document);*/
     }
 
     @Override
@@ -118,16 +199,11 @@ public class ProvObserver implements TraceObserver {
 
     @Override
     public void onProcessSubmit(TaskHandler handler, TraceRecord trace) {
-        //log.info "PROV - info - submit process > $handler"
-        //log.debug "PROV - submit process > $handler"
 
     }
 
     @Override
     public void onProcessStart(TaskHandler handler, TraceRecord trace) {
-        //get input files
-        //log.info "PROV -info-  START process > $handler"
-        //log.debug "PROV - submit process > $handler"
 
     }
 
@@ -137,17 +213,28 @@ public class ProvObserver implements TraceObserver {
          * Code to generate the ACTITY object.
          * It's the object who represents the process itself
          */
-        String activityId = "activity_${trace.getTaskId()}"
+        String activityId = "${activity_prefix}${trace.getTaskId()}"
         Activity activity_object = pFactory.newActivity(qn(activityId.toString()));
 
-        String typeAux="ActivityType"
+        String typeAux="Process"
         Object typeObj = typeAux
-        pFactory.addType(activity_object, typeObj, qn("process"))
+        pFactory.addType(activity_object, typeObj, qn(ProvenanceType.activityType.toString()))
 
         pFactory.addLabel(activity_object, trace.get("name").toString())
 
-        //TODO is it possible to add start/end time to the activity
-        //activity_object.setStartTime(trace.getFmtStr("start")...)
+        /**
+         * add start adn end time to the activity
+         */
+        //convert miliseconds to Gregorain
+        final GregorianCalendar calendarGregStart = new GregorianCalendar();
+        calendarGregStart.setTimeInMillis(trace.get("start") as long);
+        def gregorianStart= DatatypeFactory.newInstance().newXMLGregorianCalendar(calendarGregStart);
+        activity_object.setStartTime(gregorianStart)
+
+        final GregorianCalendar calendarGregEnd = new GregorianCalendar();
+        calendarGregEnd.setTimeInMillis(trace.get("complete") as long);
+        def gregorianEnd= DatatypeFactory.newInstance().newXMLGregorianCalendar(calendarGregEnd);
+        activity_object.setEndTime(gregorianEnd)
 
         activityMap.put(activity_object.getId(), activity_object)
         /**
@@ -171,25 +258,36 @@ public class ProvObserver implements TraceObserver {
             //println "** onProcessComplete INPUT: ${entity_name} \n* PATH:${pathString}"
             //XXX check if the ELEM is already on the inputList (global) or not --> done with a MAP
             Entity input_entity = pFactory.newEntity(qn(pathString.toString()));                                      //setId()
-            input_entity.setValue(pFactory.newValue(entity_name.toString(), pFactory.getName().PROV_VALUE))    //setValue()
-            /*
-            pFactory.addLabel(input_entity, "labelFOO", "ENG")
+            input_entity.setValue(pFactory.newValue(entity_name.toString(), qn(ProvenanceType.fileName.toString())))    //setValue()
+
+            //pFactory.addLabel(input_entity, "labelFOO", "ENG")
 
             //here we add on the "type" list
-            URI uriAux = new URI('URI_Foo');
-            pFactory.addType(input_entity, uriAux)
+            //URI uriAux = new URI('URI_Foo');
+            //pFactory.addType(input_entity, uriAux)
 
-            String checkStr = "checksumFOO"
-            Object checkAux = checkStr
-            pFactory.addType(input_entity, checkAux, qn("checksum"))
+            File fileAux = new File(pathString)
+            //-- Digest sha256
+            // https://gist.github.com/ikarius/299062/85b6540c99878f50f082aaee236ef15fc78e527c
+            MessageDigest digest = MessageDigest.getInstance(CHECKSUM_TYPE);
+            fileAux.withInputStream(){is->
+                byte[] buffer = new byte[8192]
+                int read = 0
+                while( (read = is.read(buffer)) > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            byte[] elementHash = digest.digest()
+            //--
+            Object checkAux = Base64.getEncoder().encodeToString(elementHash).toString()
+            pFactory.addType(input_entity, checkAux, qn(ProvenanceType.fileChecksum.toString()))
 
-            String sizeStr = "sizeFoo"
-            Object sizekAux = sizeStr
-            pFactory.addType(input_entity, sizekAux, qn("fileSize"))
+            Object sizeAux = fileAux.length()
+            pFactory.addType(input_entity, sizeAux, qn(ProvenanceType.fileSize.toString()))
 
-            String typeStr = "fileFoo"
-            Object typeAux = typeStr
-            pFactory.addType(input_entity, typeAux, qn("fileType"))
+            //Object typeEntity = elem.getClass().toString()
+            //pFactory.addType(input_entity, typeEntity, qn("elementType"))
+
             //Location locationAux = path as Location
             //input_entity.getLocation().add(locationAux)
 
@@ -197,14 +295,12 @@ public class ProvObserver implements TraceObserver {
             //otherAux.setValue("hola")
             //input_entity.getOther().add(otherAux)
 
-            //println "~~ add to LIST getId: ${input_entity.getId()}"// \n  PATH: ${path}"
-*/
 
             /*
              Create the relation btwn the ACTIVITY and the ENTITY
               */
             Used usedAction=pFactory.newUsed(activity_object.getId(),input_entity.getId());
-            usedAction.setId(qn("used_${trace.getTaskId()}_${pathString}"))
+            usedAction.setId(qn("${used_prefix}${trace.getTaskId()}_${pathString}"))
             usedMap.put(usedAction.getId(),usedAction)
 
             /*
@@ -222,34 +318,32 @@ public class ProvObserver implements TraceObserver {
             //println "** onProcessComplete INPUT: ${entity_name} \n* PATH:${pathString}"
             //XXX check if the ELEM is already on the inputList (global) or not --> done with a MAP
             Entity output_entity = pFactory.newEntity(qn(pathString.toString()));                                      //setId()
-            output_entity.setValue(pFactory.newValue(entity_name.toString(), pFactory.getName().PROV_VALUE))    //setValue()
+            output_entity.setValue(pFactory.newValue(entity_name.toString(), qn(ProvenanceType.fileName.toString())))   //setValue()
 
-            /*pFactory.addLabel(input_entity, "labelFOO", "ENG")
-            URI uriAux = new URI('URI_Foo');
-            pFactory.addType(input_entity, uriAux)
-            String checkStr = "checksumFOO"
-            Object checkAux = checkStr
-            pFactory.addType(input_entity, checkAux, qn("checksum"))
-            String sizeStr = "sizeFoo"
-            Object sizekAux = sizeStr
-            pFactory.addType(input_entity, sizekAux, qn("fileSize"))
-            String typeStr = "fileFoo"
-            Object typeAux = typeStr
-            pFactory.addType(input_entity, typeStr, qn("objectType"))
-            Location locationAux = path as Location
-            input_entity.getLocation().add(locationAux)*/
+            File fileAux = new File(pathString)
+            //-- Digest sha256
+            // https://gist.github.com/ikarius/299062/85b6540c99878f50f082aaee236ef15fc78e527c
+            MessageDigest digest = MessageDigest.getInstance(CHECKSUM_TYPE);
+            fileAux.withInputStream(){is->
+                byte[] buffer = new byte[8192]
+                int read = 0
+                while( (read = is.read(buffer)) > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            byte[] elementHash = digest.digest()
+            //--
+            Object checkAux = Base64.getEncoder().encodeToString(elementHash).toString()
+            pFactory.addType(output_entity, checkAux, qn(ProvenanceType.fileChecksum.toString()))
 
-            //Other otherAux
-            //otherAux.setValue("hola")
-            //input_entity.getOther().add(otherAux)
-
-            //println "~~ add to LIST getId: ${input_entity.getId()}"// \n  PATH: ${path}"
+            Object sizeAux = fileAux.length()
+            pFactory.addType(output_entity, sizeAux, qn(ProvenanceType.fileSize.toString()))
 
             /*
             Create the relation btwn ACTIVITY and the ENTITY
              */
             WasGeneratedBy generationAction = pFactory.newWasGeneratedBy(output_entity,"",activity_object)
-            generationAction.setId(qn("generatedBy_${trace.getTaskId()}_${pathString}"))
+            generationAction.setId(qn("${generatedBy_prefix}${trace.getTaskId()}_${pathString}"))
             generatedMap.put(generationAction.getId(),generationAction)
 
             /*

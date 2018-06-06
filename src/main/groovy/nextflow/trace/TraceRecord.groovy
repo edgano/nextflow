@@ -294,8 +294,6 @@ class TraceRecord implements Serializable {
         assert name
         def val = store.get(name)
 
-        //println"you ask for $name --> value: $val"
-    //println(store.toString())
         String sType=null
         String sFormat=null
         if( converter ) {
