@@ -3,18 +3,24 @@ package nextflow.trace
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j;
 import nextflow.Session
+import nextflow.cli.Launcher
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.util.Duration
-import org.openprovenance.prov.model.*
-import org.openprovenance.prov.interop.InteropFramework
+
 
 import javax.xml.datatype.DatatypeFactory
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 
+import org.openprovenance.prov.model.*
+import org.openprovenance.prov.interop.InteropFramework
+import org.apache.taverna.robundle.Bundle;
+import org.apache.taverna.robundle.Bundles;
+import org.apache.taverna.robundle.manifest.Manifest
 
 /**
  * Created by edgar on 10/05/18.
@@ -26,7 +32,6 @@ public class ProvObserver implements TraceObserver {
     enum ProvenanceType{
         activityType, fileChecksum, fileSize, fileName
     }
-
     //** PROV info **
     public static final String PROVBOOK_NS = "prov";
     public static final String PROVBOOK_PREFIX = "PROV";
@@ -48,22 +53,27 @@ public class ProvObserver implements TraceObserver {
         return ns.qualifiedName(PROVBOOK_PREFIX, n, pFactory);
     }
 
-    Map<QualifiedName,Entity> inputEntityMap = new HashMap<QualifiedName,Entity>(); //TODO Can merge both entity maps (I guess)
-    Map<QualifiedName,Entity> outputEntityMap = new HashMap<QualifiedName,Entity>();
-    Map<QualifiedName,Activity> activityMap = new HashMap<QualifiedName,Activity>();
-    Map<QualifiedName,Used> usedMap = new HashMap<QualifiedName,Used>();
-    Map<QualifiedName,WasGeneratedBy> generatedMap = new HashMap<QualifiedName,WasGeneratedBy>();
+    private Map<QualifiedName,Entity> inputEntityMap = new HashMap<QualifiedName,Entity>(); //TODO Can merge both entity maps (I guess)
+    private Map<QualifiedName,Entity> outputEntityMap = new HashMap<QualifiedName,Entity>();
+    private Map<QualifiedName,Activity> activityMap = new HashMap<QualifiedName,Activity>();
+    private Map<QualifiedName,Used> usedMap = new HashMap<QualifiedName,Used>();
+    private Map<QualifiedName,WasGeneratedBy> generatedMap = new HashMap<QualifiedName,WasGeneratedBy>();
 
     //RO structure names
-    String roFolderName = "ro"
-    String annotationFolderName = "annotation"
-    String snapshotFolderName = "snapshot"
-    String metadataFileName = "metadata.xml"
-    String provenanceFileName = "provenance.json"
-    String commandLineFileName = "commandLine.txt"
-    String enviromentFileName = "enviroment.txt"
-    String manifestFileName = "manifest.txt"
-    String logFileName = "log.txt"
+    private String roFolderName = "ro"
+    private String annotationFolderName = "annotation"
+    private String snapshotFolderName = "snapshot"
+    private String metadataFileName = "metadata.xml"
+    private String provenanceFileName = "provenance.json"
+    private String commandLineFileName = "commandLine.txt"
+    private String enviromentFileName = "enviroment.txt"
+    private String manifestFileName = "manifest.txt"
+    private String logFileName = "log.txt"
+
+    //for Manifest
+    private String authorAux ="** NOT provided **"
+    private String authorORCID
+    private String manifestAux ="** NOT provided **"
 
     @Override
     public void onFlowStart(Session session) {
@@ -97,9 +107,7 @@ public class ProvObserver implements TraceObserver {
                 "SINGULARITY:  ${session.config.get("singularity")}\n"+
                 "****        ****"
          */
-        /*for (Map.Entry<String, ArrayList<String>> entry : session.config.entrySet()) {
-            println "KEY: ${entry.getKey()} -- VALUE: ${entry.getValue()}"
-        }*/
+
         boolean dockerImage
         boolean singularityImage
 
@@ -109,16 +117,20 @@ public class ProvObserver implements TraceObserver {
         String containerTechAux ="** NOT container used **"
         String dockerSHAPrefix ="sha256:"
         String singularitySHAPrefix=""
-        String commandLine=""
-        String UUID=""
-        String nextflowVersion=""
+        String commandLine="${Launcher.getCommandLine()}"
+        String uuid="${session.getUniqueId().toString()}"
+        String nextflowVersionPrefix="nextflow version "
+        String nextflowVersion="${Launcher.getVersion().substring(nextflowVersionPrefix.size())}"
 
-        //for Manifest
-        String authorAux ="** NOT provided **"
-        String manifestAux ="** NOT provided **"
         def today = new SimpleDateFormat("MM/dd/yyyy HH:mm:ss").format(new Date())
-        //TODO log registry ?? --> append date
 
+        /*
+        // PRINT CONFIG MAP
+        for (Map.Entry<String, String> element : session.config.entrySet()){
+            print   "-->>value: ${element.getKey()}  -- ${element.getValue()} \n"
+        }*/
+
+        //update the variables if they exist
         if(session.config.containsKey("manifest")&& !session.config.get("manifest").getAt("author").toString().equals("null")){
             authorAux=session.config.get("manifest").getAt("author")
         }
@@ -144,33 +156,31 @@ public class ProvObserver implements TraceObserver {
         String duration='10min'
 
         if(dockerImage==true){  //https://stackoverflow.com/questions/32046334/where-can-i-find-the-sha256-code-of-a-docker-image
-            //give a diff sha256 the .repoDigest and the Id value --> TO CHECK
+                                //give a diff sha256 the .repoDigest and the Id value --> TO CHECK
             cmd ="docker inspect --format='{{index .Id}}' ${containerName}"
         }else if(singularityImage==true){
             //TODO does it work on macOX ??
-            //ERROR --> DONT like it! it takes a while to digest the sha256
-            // get the value when we pull the image
-            //singularity pull --hash shub://vsoch/hello-world
-            //Progress |===================================| 100.0%
-            // Done. Container is at: /home/vanessa/ed9755a0871f04db3e14971bec56a33f.simg                      <-- file hash
+            //--> DONT like it! it takes a while to digest the sha256
+            //*-*- get the value when we pull the image
+            //**** singularity pull --hash shub://vsoch/hello-world
+            //**** Progress |===================================| 100.0%
+            //**** Done. Container is at: /home/vanessa/ed9755a0871f04db3e14971bec56a33f.simg                      <-- file hash
+
             // use RGEGISTRY (singularity global client) : sregistry inspect $IMAGE -> version
             cmd = "sha256sum ./work/singularity/cbcrg-regressive-msa-v0.2.6.img | cut -d' ' -f1" //${containerName}
         }
         if(dockerImage || singularityImage){
             final max = Duration.of(duration).toMillis()
-            //println "command to run: ${cmd}"
             final builder = new ProcessBuilder(['bash','-c',cmd])
             //builder.directory(storePath.toFile())
             //builder.environment().remove('SINGULARITY_PULLFOLDER')
             final proc = builder.start()
             final err = new StringBuilder()
-            //*********START read proc stdout
-            //https://stackoverflow.com/questions/8149828/read-the-output-from-java-exec
+            //*********START read proc stdout       https://stackoverflow.com/questions/8149828/read-the-output-from-java-exec
             builder.redirectErrorStream(true)
             BufferedReader ine;
             ine = new BufferedReader(new InputStreamReader(proc.getInputStream()));
             String line;
-            //print("sha256: > ")
             while ((line = ine.readLine()) != null) {
                 containerSha=line
                 // remove the prefix for the sha256 information
@@ -179,7 +189,6 @@ public class ProvObserver implements TraceObserver {
                 }else{
                     containerSha=containerSha.substring(singularitySHAPrefix.size())
                 }
-                //System.out.println(containerSha);
             }
             ine.close();
             //*******END read proc stdout
@@ -194,36 +203,44 @@ public class ProvObserver implements TraceObserver {
         }
 
         /**
-         * save data into manifest.xml
+         * save data into METADATA file
          */
 
         File metadataFile = new File("${treeBuilder.getBaseDir()}/${metadataFileName}")
         metadataFile.write "Container technology: ${containerTechAux}\n"
         metadataFile << "Container name: ${containerName}\n"
         metadataFile << "Container SHA256: ${containerSha}\n"
+        metadataFile << "Command Line: ${commandLine}\n"
+        metadataFile << "UUID: ${uuid}\n"
+        metadataFile << "Nextflow version: ${nextflowVersion}\n"
         //println metaFile.text
-
+        /**
+         * save data into MANIFEST file
+         */
         File manifestFile = new File("${treeBuilder.getBaseDir()}/${manifestFileName}")
         manifestFile.write "Author: ${authorAux}\n"
         manifestFile << "Manifest: ${manifestAux}\n"
         manifestFile << "Date: ${today}\n"
-
+        /**
+         * save data into LOG file
+         */
         File logFile = new File("${treeBuilder.getBaseDir()}/${logFileName}")
-        logFile.append("\n${today}")
+        logFile.append("${today} -- ${authorAux} -- ${uuid} -- ${containerSha}\n\t${commandLine}")
     }
 
     @Override
     public void onFlowComplete() {              //when the full pipeline is DONE
-        Document document = pFactory.newDocument();
+        Document provDocument = pFactory.newDocument();
         /**
          * Print the INPUT MAP
+         * Fill the PROV document with the inputs entities
          */
         println "--onComplete INPUT Entity LIST: ${inputEntityMap.size()}"
         if (inputEntityMap.isEmpty()){
             println "INPUT is empty"
         }else {
             for (Map.Entry<QualifiedName, Entity> entity : inputEntityMap.entrySet()){
-                document.getStatementOrBundle().add(entity.value)
+                provDocument.getStatementOrBundle().add(entity.value)
                 //print   "-->>value: ${entity.getKey()} \n" //+
                         //"-->Value: ${entity.value} \n"+
                         //"-->Label: ${entity.getLabel()} \n" +
@@ -235,13 +252,14 @@ public class ProvObserver implements TraceObserver {
         }
         /**
          * Print the OUTPUT MAP
+         * Fill the PROV document with the output entities
          */
         println "\n--onComplete OUTPUT Entity LIST: ${outputEntityMap.size()}"
         if (outputEntityMap.isEmpty()){
             println "OUTPUT is empty"
         }else {
             for (Map.Entry<QualifiedName, Entity> entity : outputEntityMap.entrySet()){
-                document.getStatementOrBundle().add(entity.value)
+                provDocument.getStatementOrBundle().add(entity.value)
                 //print   "-->>value: ${entity.getKey()} \n" //+
                         //"-->Value: ${entity.value} \n"+
                         //"-->Label: ${entity.getLabel()} \n" +
@@ -253,24 +271,44 @@ public class ProvObserver implements TraceObserver {
         }
         //ACTIVITY
         for (Map.Entry<QualifiedName,Activity> activity  : activityMap.entrySet()){
-            document.getStatementOrBundle().add(activity.value)
+            provDocument.getStatementOrBundle().add(activity.value)
         }
         //USED
         for (Map.Entry<QualifiedName,Used> used  : usedMap.entrySet()){
-            document.getStatementOrBundle().add(used.value)
+            provDocument.getStatementOrBundle().add(used.value)
         }
         //WAS GENERATED BY
         for (Map.Entry<QualifiedName,WasGeneratedBy> generated  : generatedMap.entrySet()){
-            document.getStatementOrBundle().add(generated.value)
+            provDocument.getStatementOrBundle().add(generated.value)
         }
         /**
-         * Generate the PROV document
+         * Generate the PROV provDocument
          */
-        /*document.setNamespace(ns);
+        //TODO Commented to avoid generating the file ALL the time
+        /*provDocument.setNamespace(ns);
         //doConversion function
         InteropFramework intF=new InteropFramework();
-        intF.writeDocument(provFileName, document);
-        intF.writeDocument(System.out, InteropFramework.ProvFormat.PROVN, document);*/
+        intF.writeDocument(provFileName, provDocument);
+        intF.writeDocument(System.out, InteropFramework.ProvFormat.PROVN, provDocument);*/
+        /**
+         * Generate the RO BUNDLE
+         */
+        // Create a new (temporary) RO bundle
+        Bundle bundle = Bundles.createBundle();
+
+        // MODIFY the manifest
+        // https://github.com/apache/incubator-taverna-language/blob/master/taverna-robundle/src/test/java/org/apache/taverna/robundle/manifest/TestManifestJSON.java
+        Manifest manifest = bundle.getManifest();
+        org.apache.taverna.robundle.manifest.Agent createdBy = new org.apache.taverna.robundle.manifest.Agent(authorAux) ;
+        if (!authorORCID.empty){
+            createdBy.setOrcid(URI.create(authorORCID));
+        }
+        manifest.setCreatedBy(createdBy);
+        
+        // Saving a bundle:
+        /*Path zip = Files.createTempFile("XXXXbundle", ".zip");
+        Bundles.closeAndSaveBundle(bundle, zip);
+        System.out.println("Saved to " + zip);*/
     }
 
     @Override
