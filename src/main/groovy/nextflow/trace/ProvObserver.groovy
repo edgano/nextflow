@@ -7,7 +7,7 @@ import nextflow.cli.Launcher
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.util.Duration
-
+import org.apache.taverna.robundle.manifest.PathMetadata
 
 import javax.xml.datatype.DatatypeFactory
 import java.nio.file.Files
@@ -72,7 +72,7 @@ public class ProvObserver implements TraceObserver {
 
     //for Manifest
     private String authorAux ="** NOT provided **"
-    private String authorORCID
+    private String authorORCID=""
     private String manifestAux ="** NOT provided **"
 
     @Override
@@ -137,6 +137,7 @@ public class ProvObserver implements TraceObserver {
         if(session.config.containsKey("manifest")&& !session.config.get("manifest").getAt("manifest").toString().equals("null")){
             manifestAux=session.config.get("manifest").getAt("manifest")
         }
+        //TODO get author's ORCID from manifest
         if (session.config.containsKey("singularity")&& session.config.get("singularity").getAt("enabled").toString().equals("true")){
             singularityImage=true
             containerTechAux = "Singularity"
@@ -217,10 +218,11 @@ public class ProvObserver implements TraceObserver {
         /**
          * save data into MANIFEST file
          */
-        File manifestFile = new File("${treeBuilder.getBaseDir()}/${manifestFileName}")
+        //deprecated -- DONE IN THE BUNDLE!!!
+        /*File manifestFile = new File("${treeBuilder.getBaseDir()}/${manifestFileName}")
         manifestFile.write "Author: ${authorAux}\n"
         manifestFile << "Manifest: ${manifestAux}\n"
-        manifestFile << "Date: ${today}\n"
+        manifestFile << "Date: ${today}\n"*/
         /**
          * save data into LOG file
          */
@@ -295,20 +297,28 @@ public class ProvObserver implements TraceObserver {
          */
         // Create a new (temporary) RO bundle
         Bundle bundle = Bundles.createBundle();
-
         // MODIFY the manifest
         // https://github.com/apache/incubator-taverna-language/blob/master/taverna-robundle/src/test/java/org/apache/taverna/robundle/manifest/TestManifestJSON.java
         Manifest manifest = bundle.getManifest();
         org.apache.taverna.robundle.manifest.Agent createdBy = new org.apache.taverna.robundle.manifest.Agent(authorAux) ;
-        if (!authorORCID.empty){
+        if (!authorORCID.isEmpty()){
             createdBy.setOrcid(URI.create(authorORCID));
         }
         manifest.setCreatedBy(createdBy);
-        
+
+        manifest.setId(URI.create("/"))
+
+        //TODO fill list
+        LinkedList<PathMetadata> aggregationList = new LinkedList<PathMetadata>()
+        PathMetadata metaPath = new PathMetadata("URI_Example")        // set URI
+
+        aggregationList.add(metaPath)
+        manifest.setAggregates(aggregationList)
+
         // Saving a bundle:
-        /*Path zip = Files.createTempFile("XXXXbundle", ".zip");
+        Path zip = Files.createTempFile("XXXXbundle", ".zip");
         Bundles.closeAndSaveBundle(bundle, zip);
-        System.out.println("Saved to " + zip);*/
+        println("Saved to " + zip);
     }
 
     @Override

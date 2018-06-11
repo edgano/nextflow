@@ -59,12 +59,12 @@ class Const {
     /**
      * The app build time as linux/unix timestamp
      */
-    static public final long APP_TIMESTAMP = 1528387833331
+    static public final long APP_TIMESTAMP = 1528731106388
 
     /**
      * The app build number
      */
-    static public final int APP_BUILDNUM = 5377
+    static public final int APP_BUILDNUM = 5391
 
 
     /**
