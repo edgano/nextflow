@@ -56,6 +56,8 @@ class CmdInfo extends CmdBase {
 
     @Override
     void run() {
+        def infoMap=[:] //IDK why it can be a class object...
+
         int level = moreDetailed ? 2 : ( detailed ? 1 : 0 )
         if( !args ) {
             println getInfo(level)
@@ -67,37 +69,46 @@ class CmdInfo extends CmdBase {
             throw new AbortOperationException("Unknown project `${args[0]}`")
 
         final manifest = manager.getManifest()
-        println " project name: ${manager.project}"
-        println " repository  : ${manager.repositoryUrl}"
-        println " local path  : ${manager.localPath}"
-        println " main script : ${manager.mainScriptName}"
+        infoMap.put('project name', "${manager.project}")
+        infoMap.put('repository', "${manager.repositoryUrl}")
+        infoMap.put('local path', "${manager.localPath}")
+        infoMap.put('main script', "${manager.mainScriptName}")
+
         if( manager.homePage && manager.homePage != manager.repositoryUrl )
-            println " home page   : ${manager.homePage}"
+            infoMap.put('home page', "${manager.homePage}")
         if( manifest.description )
-            println " description : ${manifest.description}"
+            infoMap.put('description', "${manifest.description}")
         if( manifest.author )
-            println " author      : ${manifest.author}"
+            infoMap.put('author', "${manifest.author}")
 
         def revs = manager.getRevisions(level)
         if( revs.size() == 1 )
-            println " revision    : ${revs[0]}"
+            infoMap.put('revision', "${revs[0]}")
         else {
-            println " revisions   : "
-            revs.each { println " $it" }
+            def revisionList = new ArrayList<String>()
+            revs.each {
+                revisionList.add(it)
+            }
+            infoMap.put('revisions',revisionList)
         }
 
         def updates = manager.getUpdates(level)
         if( updates ) {
             if( updates.size() == 1 && revs.size() == 1 )
-                println " updates     : ${updates[0]}"
+                infoMap.put('updates', "${updates[0]}")
+
             else {
                 println " updates     : "
-                updates.each { println " $it" }
+                updates.each {
+                    println " $it"
+                }
             }
         }
-
+        printMap(infoMap)
     }
-
+    private void printMap(Map map){
+        map.each{ k, v -> println "${k}\t:\t${v}" }
+    }
     final static private BLANK = '  '
     final static private NEWLINE = '\n'
 
@@ -109,23 +120,32 @@ class CmdInfo extends CmdBase {
      * @return A string containing some system runtime information
      */
     static String getInfo(int level, boolean printProc=false) {
+        def getInfoMap=[:]  //static method
 
         def props = System.getProperties()
         def result = new StringBuilder()
-        result << BLANK << "Version: ${Const.APP_VER} build ${Const.APP_BUILDNUM}" << NEWLINE
-        result << BLANK << "Modified: ${Const.APP_TIMESTAMP_UTC} ${Const.deltaLocal()}" << NEWLINE
-        result << BLANK << "System: ${props['os.name']} ${props['os.version']}" << NEWLINE
-        result << BLANK << "Runtime: Groovy ${GroovySystem.getVersion()} on ${System.getProperty('java.vm.name')} ${props['java.runtime.version']}" << NEWLINE
-        result << BLANK << "Encoding: ${System.getProperty('file.encoding')} (${System.getProperty('sun.jnu.encoding')})" << NEWLINE
+        getInfoMap.put('Version', "${Const.APP_VER} build ${Const.APP_BUILDNUM}")
+
+        getInfoMap.put('Modified', "${Const.APP_TIMESTAMP_UTC} ${Const.deltaLocal()}")
+
+        getInfoMap.put('System', "${props['os.name']} ${props['os.version']}")
+
+        getInfoMap.put('Runtime', "Groovy ${GroovySystem.getVersion()} on ${System.getProperty('java.vm.name')} ${props['java.runtime.version']}")
+
+        getInfoMap.put('Encoding', "${System.getProperty('file.encoding')} (${System.getProperty('sun.jnu.encoding')})")
 
         if( printProc ) {
             def OS = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean()
-            result << BLANK << "Process: ${ManagementFactory.getRuntimeMXBean().getName()} " << getLocalAddress() << NEWLINE
-            result << BLANK << "CPUs: ${OS.availableProcessors} - Mem: ${new MemoryUnit(OS.totalPhysicalMemorySize)} (${new MemoryUnit(OS.freePhysicalMemorySize)}) - Swap: ${new MemoryUnit(OS.totalSwapSpaceSize)} (${new MemoryUnit(OS.freeSwapSpaceSize)})"
+            getInfoMap.put('Process', "${ManagementFactory.getRuntimeMXBean().getName()} ${getLocalAddress()}") //why not ${} previously?
+
+            getInfoMap.put('CPUs', "${OS.availableProcessors}")
+            getInfoMap.put('Mem', "${new MemoryUnit(OS.totalPhysicalMemorySize)} (${new MemoryUnit(OS.freePhysicalMemorySize)})")
+            getInfoMap.put('Swap', "${new MemoryUnit(OS.totalSwapSpaceSize)} (${new MemoryUnit(OS.freeSwapSpaceSize)})")
+
         }
 
         if( level == 0  )
-            return result.toString()
+            return getInfoMap.toString()
 
         List<String> capsule = []
         List<String> args = []
@@ -140,11 +160,11 @@ class CmdInfo extends CmdBase {
                     }
 
         // file system
-        result << BLANK << "File systems: "
-        result << FileSystemProvider.installedProviders().collect { it.scheme }.join(', ')
-        result << NEWLINE
+        getInfoMap.put('File systems', "${FileSystemProvider.installedProviders().collect { it.scheme }.join(', ')})")
+
 
         // JVM options
+        //TODO check what dump does
         result << BLANK << "JVM opts:" << NEWLINE
         for( String entry : args ) {
             int p = entry.indexOf('=')
@@ -184,7 +204,8 @@ class CmdInfo extends CmdBase {
         dump("Class-path" , System.getProperty('java.class.path'), 1, result)
 
         // final string
-        return result.toString()
+        //return result.toString()
+        return getInfoMap.toString()
     }
 
     static private void dump(String key, def value, int indent, StringBuilder result) {
