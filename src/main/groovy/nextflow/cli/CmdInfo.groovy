@@ -30,7 +30,7 @@ import nextflow.Const
 import nextflow.exception.AbortOperationException
 import nextflow.scm.AssetManager
 import nextflow.util.MemoryUnit
-
+import groovy.json.*
 /**
  * CLI sub-command INFO
  *
@@ -56,7 +56,7 @@ class CmdInfo extends CmdBase {
 
     @Override
     void run() {
-        def infoMap=[:] //IDK why it can be a class object...
+        def infoMap=[:]
 
         int level = moreDetailed ? 2 : ( detailed ? 1 : 0 )
         if( !args ) {
@@ -69,13 +69,13 @@ class CmdInfo extends CmdBase {
             throw new AbortOperationException("Unknown project `${args[0]}`")
 
         final manifest = manager.getManifest()
-        infoMap.put('project name', "${manager.project}")
+        infoMap.put('projectName', "${manager.project}")
         infoMap.put('repository', "${manager.repositoryUrl}")
-        infoMap.put('local path', "${manager.localPath}")
-        infoMap.put('main script', "${manager.mainScriptName}")
+        infoMap.put('localPath', "${manager.localPath}")
+        infoMap.put('mainScript', "${manager.mainScriptName}")
 
         if( manager.homePage && manager.homePage != manager.repositoryUrl )
-            infoMap.put('home page', "${manager.homePage}")
+            infoMap.put('homePage', "${manager.homePage}")
         if( manifest.description )
             infoMap.put('description', "${manifest.description}")
         if( manifest.author )
@@ -90,6 +90,7 @@ class CmdInfo extends CmdBase {
                 revisionList.add(it)
             }
             infoMap.put('revisions',revisionList)
+
         }
 
         def updates = manager.getUpdates(level)
@@ -98,17 +99,34 @@ class CmdInfo extends CmdBase {
                 infoMap.put('updates', "${updates[0]}")
 
             else {
-                println " updates     : "
+                def updatesList = new ArrayList<String>()
                 updates.each {
-                    println " $it"
+                    updatesList.add(it)
                 }
+                infoMap.put('updates',updatesList)
+
             }
         }
-        printMap(infoMap)
+        mapToJson(infoMap)
     }
+    /**
+     * Print the Map without any special format
+     * @param map
+     */
     private void printMap(Map map){
         map.each{ k, v -> println "${k}\t:\t${v}" }
     }
+    /**
+     * Convert the Map<String,String> to Json format
+     * @param map
+     */
+    private void mapToJson(Map map){
+        def mapAsJson = JsonOutput.toJson(map)
+
+        println JsonOutput.prettyPrint(mapAsJson)
+
+    }
+
     final static private BLANK = '  '
     final static private NEWLINE = '\n'
 
@@ -120,32 +138,23 @@ class CmdInfo extends CmdBase {
      * @return A string containing some system runtime information
      */
     static String getInfo(int level, boolean printProc=false) {
-        def getInfoMap=[:]  //static method
 
         def props = System.getProperties()
         def result = new StringBuilder()
-        getInfoMap.put('Version', "${Const.APP_VER} build ${Const.APP_BUILDNUM}")
-
-        getInfoMap.put('Modified', "${Const.APP_TIMESTAMP_UTC} ${Const.deltaLocal()}")
-
-        getInfoMap.put('System', "${props['os.name']} ${props['os.version']}")
-
-        getInfoMap.put('Runtime', "Groovy ${GroovySystem.getVersion()} on ${System.getProperty('java.vm.name')} ${props['java.runtime.version']}")
-
-        getInfoMap.put('Encoding', "${System.getProperty('file.encoding')} (${System.getProperty('sun.jnu.encoding')})")
+        result << BLANK << "Version: ${Const.APP_VER} build ${Const.APP_BUILDNUM}" << NEWLINE
+        result << BLANK << "Modified: ${Const.APP_TIMESTAMP_UTC} ${Const.deltaLocal()}" << NEWLINE
+        result << BLANK << "System: ${props['os.name']} ${props['os.version']}" << NEWLINE
+        result << BLANK << "Runtime: Groovy ${GroovySystem.getVersion()} on ${System.getProperty('java.vm.name')} ${props['java.runtime.version']}" << NEWLINE
+        result << BLANK << "Encoding: ${System.getProperty('file.encoding')} (${System.getProperty('sun.jnu.encoding')})" << NEWLINE
 
         if( printProc ) {
             def OS = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean()
-            getInfoMap.put('Process', "${ManagementFactory.getRuntimeMXBean().getName()} ${getLocalAddress()}") //why not ${} previously?
-
-            getInfoMap.put('CPUs', "${OS.availableProcessors}")
-            getInfoMap.put('Mem', "${new MemoryUnit(OS.totalPhysicalMemorySize)} (${new MemoryUnit(OS.freePhysicalMemorySize)})")
-            getInfoMap.put('Swap', "${new MemoryUnit(OS.totalSwapSpaceSize)} (${new MemoryUnit(OS.freeSwapSpaceSize)})")
-
+            result << BLANK << "Process: ${ManagementFactory.getRuntimeMXBean().getName()} " << getLocalAddress() << NEWLINE
+            result << BLANK << "CPUs: ${OS.availableProcessors} - Mem: ${new MemoryUnit(OS.totalPhysicalMemorySize)} (${new MemoryUnit(OS.freePhysicalMemorySize)}) - Swap: ${new MemoryUnit(OS.totalSwapSpaceSize)} (${new MemoryUnit(OS.freeSwapSpaceSize)})"
         }
 
         if( level == 0  )
-            return getInfoMap.toString()
+            return result.toString()
 
         List<String> capsule = []
         List<String> args = []
@@ -153,18 +162,18 @@ class CmdInfo extends CmdBase {
                 .getRuntimeMXBean()
                 .getInputArguments()
                 .each { String it ->
-                        if( it.startsWith('-Dcapsule.'))
-                            capsule << it.substring(2)
-                        else
-                            args << it
-                    }
+            if( it.startsWith('-Dcapsule.'))
+                capsule << it.substring(2)
+            else
+                args << it
+        }
 
         // file system
-        getInfoMap.put('File systems', "${FileSystemProvider.installedProviders().collect { it.scheme }.join(', ')})")
-
+        result << BLANK << "File systems: "
+        result << FileSystemProvider.installedProviders().collect { it.scheme }.join(', ')
+        result << NEWLINE
 
         // JVM options
-        //TODO check what dump does
         result << BLANK << "JVM opts:" << NEWLINE
         for( String entry : args ) {
             int p = entry.indexOf('=')
@@ -204,8 +213,7 @@ class CmdInfo extends CmdBase {
         dump("Class-path" , System.getProperty('java.class.path'), 1, result)
 
         // final string
-        //return result.toString()
-        return getInfoMap.toString()
+        return result.toString()
     }
 
     static private void dump(String key, def value, int indent, StringBuilder result) {
